@@ -5,9 +5,9 @@ Protocol details (UUIDs, byte formats, what's confirmed vs. unverified) live in 
 
 ## Status
 
-Implemented: power switches (Sound, Light), reflecting live device state via BLE notify rather than assuming the last command sent.
+Implemented: power switches (Sound, Light) and percent sliders (Sleep Volume, Light Level), all reflecting live device state via BLE notify where the characteristic supports it, rather than assuming the last command sent.
 
-Not yet implemented: sleep volume, light level, sound mode, light color (planned as `number`/`select` entities — the confirmed characteristics are already in `protocol.py`). Several other characteristics are unverified and intentionally not wired to any entity yet — see PROTOCOL.md.
+Not yet implemented: sound mode, light color (planned as `select` entities — the confirmed characteristics are already in `protocol.py`). Several other characteristics are unverified and intentionally not wired to any entity yet — see PROTOCOL.md.
 
 Connections are proxy-aware: the integration resolves devices through Home Assistant's Bluetooth integration, so it works over an ESPHome Bluetooth Proxy (`bluetooth_proxy: active: true`) exactly the same as a local adapter — it never opens its own scanner or client.
 
