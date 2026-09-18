@@ -13,7 +13,7 @@ from .device import NightingaleDevice, NightingaleNotFoundError
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SWITCH, Platform.NUMBER]
+PLATFORMS: list[Platform] = [Platform.SWITCH, Platform.NUMBER, Platform.SELECT]
 
 type NightingaleConfigEntry = ConfigEntry[NightingaleDevice]
 
