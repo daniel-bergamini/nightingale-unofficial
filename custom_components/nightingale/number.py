@@ -8,12 +8,11 @@ Application Error 0x80. See SLEEP_VOLUME_MAX/LIGHT_LEVEL_MAX/
 RELAX_VOLUME_MAX in protocol.py and PROTOCOL.md.
 
 Sleep Volume and Relax Volume are kept as separate entities under their
-full vendor names rather than assuming one is simply "the" volume: an A/B
-listening test found Relax Volume audibly controls live playback while
-Sleep Volume's write succeeds with no audible effect, suggesting the
-device has two distinct sound profiles (matching PROTOCOL.md's separate,
-still-unverified Sleep/Relax sound-track characteristics) rather than one
-of the two names just being wrong.
+full vendor names, not collapsed into one "volume": confirmed live, the
+device has two distinct sound profiles selected by Sound Mode (see
+select.py) -- Sleep Volume is the live one when Sound Mode is Sound
+Blanket, Relax Volume when it's Nature Sound. Adjusting the "wrong" one
+for the current mode is a no-op, not a bug.
 
 Same read-back-don't-assume architecture as switch.py: initial read on
 setup, live notify subscription where the characteristic supports it

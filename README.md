@@ -7,7 +7,7 @@ Protocol details (UUIDs, byte formats, what's confirmed vs. unverified) live in 
 
 Implemented: power switches (Sound, Light), level sliders (Sleep Volume, Relax Volume, Light Level — all 0–10, an 11-step scale confirmed by live testing, not a 0–100 percentage), and selects (Sound Mode, Light Color), all reflecting live device state via BLE notify where the characteristic supports it, rather than assuming the last command sent.
 
-Known quirk: despite the name, **Relax Volume** — not Sleep Volume — is the characteristic that audibly controls live playback (confirmed via an A/B listening test, `tools/volume_ab_probe.py`). Sleep Volume's write succeeds but does nothing audible; its real purpose is unknown, so both are kept as separate entities under their full vendor names rather than guessing which one is "right." See PROTOCOL.md for the full writeup.
+Known quirk: this device has two distinct sound profiles, selected by the Sound Mode select — **Sleep Volume** is only live when Sound Mode is Sound Blanket, **Relax Volume** only when it's Nature Sound (confirmed via `tools/volume_ab_probe.py` plus live testing in HA). Adjusting the volume that doesn't match the current mode is a no-op, not a bug. See PROTOCOL.md for the full writeup.
 
 Several other characteristics are unverified and intentionally not wired to any entity yet — see PROTOCOL.md.
 

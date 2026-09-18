@@ -125,13 +125,24 @@ So despite the name, **relax volume is the characteristic that actually
 gain-controls whatever's currently playing** — the same kind of
 vendor-naming trap as `SoundOn`/`SoundOff` turning out to be schedule
 setters rather than the power toggle (see "Notes on Schedule vs.
-Immediate Control" below). Sleep volume's real purpose is still unknown;
-it may only matter for some distinct, not-yet-triggered playback mode,
-given PROTOCOL.md already lists separate (unverified) sleep/relax
-sound-track characteristics suggesting two distinct sound profiles exist.
-Both are kept as separate entities under their full vendor names rather
-than collapsing them into one "volume" control or guessing which name is
-"right."
+Immediate Control" below).
+
+## Confirmed: Sound Mode Selects Which Volume Profile Is Live
+
+Follow-up testing in Home Assistant (toggling the Sound Mode select)
+found sleep volume isn't dead: it's live exactly when sound mode is
+`SOUND_BLANKET` (`0x00`), and relax volume is live exactly when sound
+mode is `NATURE_SOUND` (`0x01`). So this device really does have two
+distinct sound profiles, each with its own volume, and `SOUND_MODE_UUID`
+is what selects between them — not just a content-genre picker as its
+decompiled naming alone suggested. This also matches the still-unverified
+separate sleep/relax sound-track characteristics: a consistent two-profile
+design throughout, not a coincidence.
+
+Practical effect for the integration: adjusting Sleep Volume only has an
+audible effect while Sound Mode is set to Sound Blanket, and Relax
+Volume only while it's set to Nature Sound. Both stay as separate
+entities under their full vendor names.
 
 ## Known Vendor Bug: Page Volume UUID
 
