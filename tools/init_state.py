@@ -4,9 +4,14 @@
 Built after track_probe.py corrupted Relax sound track's live value by
 writing 1-byte test values into what turned out to be a 2-byte
 characteristic -- the true original, recovered from an earlier run's
-logged "current raw value" line, was b'\\x01\\xfe'. A later read-only
-run also confirmed Sleep sound track's original value, b'\\x05\\x00'.
-See PROTOCOL.md.
+logged "current raw value" line, was b'\\x01\\xfe' (soundIndex 510 =
+"Lakeshore"). Sleep sound track's original value, b'\\x05\\x00'
+(1280), turned out to have never been a valid blanket id at all --
+decompiled Blanket.java's index arithmetic (roomStyle 100/200/300 +
+roomType offset 10/15/20/25/30) only produces values 110-330, so this
+now writes a real one (Adult Bedroom Blanket, Absorptive = 110)
+instead of restoring a value that was always non-functional. See
+PROTOCOL.md.
 
 Sets:
 - Sound status: on
@@ -19,8 +24,9 @@ Sets:
   Sound Mode is Sound Blanket)
 - Sleep volume, Relax volume, Light level: 5 (middle of the confirmed
   0-10 range)
-- Sleep sound track, Relax sound track: their recovered original raw
-  values
+- Sleep sound track: a confirmed-valid blanket id (Adult Bedroom
+  Blanket, Absorptive)
+- Relax sound track: the recovered original raw value (Lakeshore)
 
 Also useful going forward as a clean, fully-known starting point before
 any exploratory testing, rather than accumulating drift across many
@@ -54,7 +60,12 @@ RELAX_SOUND_TRACK_UUID = "0e4fa979-6e76-45f0-8887-762ee399121c"
 
 NATURE_SOUND = 0x01
 MIDDLE_VOLUME = 5
-RECOVERED_SLEEP_TRACK = bytes.fromhex("0500")
+# Adult Bedroom Blanket, Absorptive -- confirmed valid via decompiled
+# Blanket.java (roomStyle 100 + roomType offset 10), unlike the
+# previous recovered-but-dead b'\x05\x00'.
+DEFAULT_SLEEP_TRACK = (110).to_bytes(2, "big")
+# Lakeshore -- confirmed valid via decompiled Room.java, and the real
+# original value recovered from a pre-incident log line.
 RECOVERED_RELAX_TRACK = bytes.fromhex("01fe")
 
 # (label, characteristic uuid, bytes to write)
@@ -65,7 +76,7 @@ STEPS: list[tuple[str, str, bytes]] = [
     ("Sleep volume", SLEEP_VOLUME_UUID, bytes([MIDDLE_VOLUME])),
     ("Relax volume", RELAX_VOLUME_UUID, bytes([MIDDLE_VOLUME])),
     ("Light level", LIGHT_LEVEL_UUID, bytes([MIDDLE_VOLUME])),
-    ("Sleep sound track", SLEEP_SOUND_TRACK_UUID, RECOVERED_SLEEP_TRACK),
+    ("Sleep sound track", SLEEP_SOUND_TRACK_UUID, DEFAULT_SLEEP_TRACK),
     ("Relax sound track", RELAX_SOUND_TRACK_UUID, RECOVERED_RELAX_TRACK),
 ]
 

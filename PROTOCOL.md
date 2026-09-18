@@ -45,7 +45,7 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 | Relax volume | `bb23ae19-b2f0-46f4-930d-d89047d92c06` | 1 byte, `0x00`–`0x0A` assumed (0–10, carried over from sleep volume/light level's independently-binary-searched ceiling, not separately re-verified). **Live A/B tested and confirmed to audibly control live playback** — despite the name, this is the volume control that actually does something right now. |
 | Page volume | ~~`f2e85c5e6-97a4-4c3a-9742-5278bf3881ec`~~ — **invalid, unusable** | 1 byte, `0x00`–`0x64` (unverified) |
 | Volume balance (L/R) | `c32f5045-d621-4c9e-8f9b-557b5a5d65cd` | Integer, likely signed for L/R skew (unverified) |
-| Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | **Confirmed 2 bytes** (original value `b'\x05\x00'`), but the `BedroomBlanket` id scheme isn't traced yet — see "Confirmed: Nature Sound Track Is a Big-Endian soundIndex" below (unverified — do not guess valid values) |
+| Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | **Confirmed**: big-endian 16-bit `soundIndex`, same format as Relax sound track — see `BEDROOM_BLANKETS` in `protocol.py` and "Confirmed: Bedroom Blanket Ids" below |
 | Relax sound track | `0e4fa979-6e76-45f0-8887-762ee399121c` | **Confirmed**: big-endian 16-bit `soundIndex` — see `NATURE_SOUND_TRACKS` in `protocol.py` and "Confirmed: Nature Sound Track Is a Big-Endian soundIndex" below |
 | Sound scheduled (enable flag) | `86dcd724-031d-4ebe-a2e1-912670a06c3c` | Integer, likely `0x00`/`0x01` (unverified) |
 | **Sound auto-on time** ⚠️ not an immediate toggle | `11104650-14be-436b-a900-b72763c3be82` | 2 bytes: `[minute, hour]`, both plain integers, 24hr |
@@ -211,16 +211,53 @@ better than a literal name match would have — a lakeshore-at-night
 ambiance plausibly includes both as part of the scene.)
 
 `RELAX_SOUND_TRACK_UUID` is now a first-class confirmed characteristic:
-`encode_nature_sound_track`/`decode_nature_sound_track` in `protocol.py`
-handle the big-endian conversion, and `NATURE_SOUND_TRACKS` holds the
+`encode_sound_track_id`/`decode_sound_track_id` in `protocol.py` handle
+the big-endian conversion, and `NATURE_SOUND_TRACKS` holds the
 name→`soundIndex` map above. Wired up as the "Relax Sound Track" select
-entity.
+entity, and live-confirmed further: cycling through all 5 options in HA
+matched what was actually heard for each one.
 
 Sleep sound track's original value, `b'\x05\x00'` (`0x0500 = 1280`
-big-endian), doesn't match this numbering and remains unverified —
-`NatureSound extends BedroomBlanket` in the decompiled model, so the
-generic `BedroomBlanket` class likely has its own id scheme entirely
-separate from `NatureSound.soundIndex`. Not yet traced.
+big-endian), doesn't match this numbering — `NatureSound extends
+BedroomBlanket` in the decompiled model, so the generic `BedroomBlanket`
+class has its own id scheme entirely separate from `NatureSound.soundIndex`,
+traced in the next section.
+
+## Confirmed: Bedroom Blanket Ids
+
+Switching Sound Mode to Sound Blanket and turning Sleep Volume all the
+way up produced no audio at all — the immediate suspicion was a missing
+"enable" step, but decompiled `RoomFragment.java` ruled that out
+directly: the app's `nightingaleBlanketEnabled` flag is purely a UI
+concept that maps straight onto `SOUND_MODE_UUID`
+(`device.setSoundMode(nightingaleBlanketEnabled ? BLANKET :
+NATURE_SOUND)`), the same characteristic already wired up. Nothing
+missing there.
+
+The real answer was in `Blanket.java`'s index arithmetic:
+
+```java
+// roomStyleIndex: Absorptive=100, Neutral=200, Reflective=300
+// roomTypeIndex offset: Bedroom=+10, Kids=+15, Snoring=+20, Tinnitus=+25, Hospital=+30
+blanketIndex = roomStyleIndex + <offset for roomTypeIndex>;
+```
+
+3 styles × 5 types = **15 values** (matching the "15 sound blankets"
+marketing claim exactly): `110, 115, 120, 125, 130, 210, 215, 220, 225,
+230, 310, 315, 320, 325, 330`. The Hospital (`+30`) offset wasn't
+directly visible in the decompiled output used to trace this (cut off
+mid-paste) but is a confident inference from the other four offsets'
+clean `+5` progression.
+
+`1280` (Sleep sound track's restored-but-dead original value) isn't in
+this list — so the write path was never broken, there was simply
+nothing valid selected. `BEDROOM_BLANKETS` in `protocol.py` holds the
+full name→id map (name + room style combined into one label, since
+`Blanket.generateBlanketName()` only varies by room type — style is a
+separate dimension distinguished only in the description string, not
+the name). Wired up as the "Sleep Sound Track" select entity;
+`tools/init_state.py` now writes a real value (`110`, Adult Bedroom
+Blanket/Absorptive) instead of restoring the non-functional `1280`.
 
 ## Known Vendor Bug: Page Volume UUID
 

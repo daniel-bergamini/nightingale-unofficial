@@ -58,6 +58,8 @@ RELAX_VOLUME_MAX = 10
 # value b'\x01\xfe' = 0x01FE = 510 = "Lakeshore" -- which fits what was
 # actually heard (crickets, and a knocking sound more likely a frog than
 # a bird) far better than assuming that byte pair was a plain 0-9 index.
+# Live-confirmed further: cycling through all 5 in HA matched what was
+# actually heard for each one.
 RELAX_SOUND_TRACK_UUID = "0e4fa979-6e76-45f0-8887-762ee399121c"
 NATURE_SOUND_TRACKS: dict[str, int] = {
     "Lakeshore": 510,
@@ -65,6 +67,37 @@ NATURE_SOUND_TRACKS: dict[str, int] = {
     "Loons": 530,
     "Whale Songs": 540,
     "Rainstorm": 550,
+}
+# Confirmed via decompiled construction code (Blanket.java): same
+# big-endian 16-bit format as NATURE_SOUND_TRACKS. roomStyleIndex
+# (Absorptive=100, Neutral=200, Reflective=300) + roomType offset
+# (Bedroom=+10, Kids=+15, Snoring=+20, Tinnitus=+25, Hospital=+30) --
+# 3x5 = 15 values, matching the "15 sound blankets" marketing claim
+# exactly. The Hospital (+30) offset wasn't directly visible in the
+# decompiled output (cut off mid-paste) but is a confident inference
+# from the clean +5 arithmetic progression of the other four. This
+# fully explains why Sleep sound track never played anything: its
+# recovered/restored value, b'\x05\x00' = 0x0500 = 1280 big-endian,
+# was never a valid blanket id in the first place -- 1280 isn't in
+# this table, so there was nothing wrong with the write path, just
+# nothing valid to select.
+SLEEP_SOUND_TRACK_UUID = "a54d9906-4298-4656-9bd3-7095e87365d6"
+BEDROOM_BLANKETS: dict[str, int] = {
+    "Adult Bedroom Blanket (Absorptive)": 110,
+    "Adult Bedroom Blanket (Neutral)": 210,
+    "Adult Bedroom Blanket (Reflective)": 310,
+    "Infant, Toddler & Youth Room Blanket (Absorptive)": 115,
+    "Infant, Toddler & Youth Room Blanket (Neutral)": 215,
+    "Infant, Toddler & Youth Room Blanket (Reflective)": 315,
+    "Snoring Blanket (Absorptive)": 120,
+    "Snoring Blanket (Neutral)": 220,
+    "Snoring Blanket (Reflective)": 320,
+    "Tinnitus Blanket (Absorptive)": 125,
+    "Tinnitus Blanket (Neutral)": 225,
+    "Tinnitus Blanket (Reflective)": 325,
+    "Hospital Room Blanket (Absorptive)": 130,
+    "Hospital Room Blanket (Neutral)": 230,
+    "Hospital Room Blanket (Reflective)": 330,
 }
 SOUND_AUTO_ON_UUID = "11104650-14be-436b-a900-b72763c3be82"
 SOUND_AUTO_OFF_UUID = "5e6379e1-bd5b-44a2-ac16-74f845d6c388"
@@ -96,11 +129,6 @@ LOCATION_NAME_UUID = "37c4cabf-3f32-40ef-8ee3-92db35671faa"
 # so this characteristic is unusable and unimplementable as shipped. See
 # PROTOCOL.md "Known Vendor Bug: Page Volume UUID".
 VOLUME_BALANCE_UUID = "c32f5045-d621-4c9e-8f9b-557b5a5d65cd"
-# Confirmed 2 bytes live (original value b'\x05\x00'), but unlike
-# RELAX_SOUND_TRACK_UUID, the corresponding BedroomBlanket ID scheme
-# isn't traced yet -- 0x0500 = 1280 big-endian doesn't match anything
-# known. Stays unverified until that's found.
-SLEEP_SOUND_TRACK_UUID = "a54d9906-4298-4656-9bd3-7095e87365d6"
 SOUND_SCHEDULED_UUID = "86dcd724-031d-4ebe-a2e1-912670a06c3c"
 LIGHT_SCHEDULED_UUID = "8ae4953e-0db8-11e6-a148-3e1d05defe78"
 DISABLE_BUTTON_UUID = "b686b17d-b0dd-4415-bb76-895745d9d5ed"
@@ -110,7 +138,6 @@ LEGACY_ON_OFF_UUID = "c7d62e9d-c352-43b5-a00a-939254cfb3ca"  # not wired to anyt
 
 UNVERIFIED_NOTES = {
     VOLUME_BALANCE_UUID: "format guessed as signed integer L/R skew, not traced/tested",
-    SLEEP_SOUND_TRACK_UUID: "confirmed 2-byte big-endian format, but the BedroomBlanket id list isn't traced yet -- do not guess valid values",
     SOUND_SCHEDULED_UUID: "guessed 0x00/0x01 enable flag, not traced/tested",
     LIGHT_SCHEDULED_UUID: "guessed 0x00/0x01 enable flag, not traced/tested",
     DISABLE_BUTTON_UUID: "format entirely unknown",
@@ -189,18 +216,21 @@ def decode_rgb(data: bytes) -> tuple[int, int, int]:
     return (data[0], data[1], data[2])
 
 
-def encode_nature_sound_track(sound_index: int) -> bytes:
-    """Encode a Nature Sound track selection (RELAX_SOUND_TRACK_UUID).
+def encode_sound_track_id(sound_index: int) -> bytes:
+    """Encode a sound track selection (RELAX_SOUND_TRACK_UUID or
+    SLEEP_SOUND_TRACK_UUID).
 
-    Big-endian 16-bit, matching the decompiled app's NatureSound.soundIndex
-    field exactly. Use NATURE_SOUND_TRACKS for the confirmed name->index
-    map rather than passing an arbitrary integer.
+    Big-endian 16-bit, matching the decompiled app's soundIndex fields
+    exactly -- both NatureSound and BedroomBlanket share this format,
+    just with different valid value ranges. Use NATURE_SOUND_TRACKS or
+    BEDROOM_BLANKETS for the confirmed name->index maps rather than
+    passing an arbitrary integer.
     """
     return sound_index.to_bytes(2, "big")
 
 
-def decode_nature_sound_track(data: bytes) -> int:
-    """Decode a Nature Sound track selection. Returns the raw soundIndex."""
+def decode_sound_track_id(data: bytes) -> int:
+    """Decode a sound track selection. Returns the raw soundIndex."""
     return int.from_bytes(data, "big")
 
 

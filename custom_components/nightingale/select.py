@@ -21,18 +21,20 @@ from . import NightingaleConfigEntry
 from .const import MANUFACTURER, MODEL
 from .device import NightingaleDevice, NightingaleNotFoundError
 from .protocol import (
+    BEDROOM_BLANKETS,
     LIGHT_COLOR_PRESETS,
     LIGHT_COLOR_UUID,
     NATURE_SOUND_TRACKS,
     RELAX_SOUND_TRACK_UUID,
+    SLEEP_SOUND_TRACK_UUID,
     SOUND_MODE_UUID,
     SoundMode,
-    decode_nature_sound_track,
     decode_rgb,
     decode_sound_mode,
-    encode_nature_sound_track,
+    decode_sound_track_id,
     encode_rgb,
     encode_sound_mode,
+    encode_sound_track_id,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,8 +49,6 @@ SOUND_MODE_BY_LABEL = {label: mode for mode, label in SOUND_MODE_LABELS.items()}
 LIGHT_COLOR_LABELS = {rgb: name.capitalize() for name, rgb in LIGHT_COLOR_PRESETS.items()}
 LIGHT_COLOR_RGB_BY_LABEL = {label: rgb for rgb, label in LIGHT_COLOR_LABELS.items()}
 
-NATURE_SOUND_TRACK_BY_LABEL = dict(NATURE_SOUND_TRACKS)  # label == name here, no transform needed
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -62,6 +62,7 @@ async def async_setup_entry(
             NightingaleSoundModeSelect(device, entry.title),
             NightingaleLightColorSelect(device, entry.title),
             NightingaleRelaxSoundTrackSelect(device, entry.title),
+            NightingaleSleepSoundTrackSelect(device, entry.title),
         ]
     )
 
@@ -178,17 +179,49 @@ class NightingaleLightColorSelect(_NightingaleSelectBase):
         return encode_rgb(*LIGHT_COLOR_RGB_BY_LABEL[option])
 
 
-class NightingaleRelaxSoundTrackSelect(_NightingaleSelectBase):
+class _NightingaleSoundTrackSelect(_NightingaleSelectBase):
+    """Shared codec for the two sound-track selects.
+
+    Both RELAX_SOUND_TRACK_UUID and SLEEP_SOUND_TRACK_UUID share the same
+    big-endian 16-bit soundIndex wire format (confirmed via decompiled
+    construction code: Room.java's NatureSound setup for Relax,
+    Blanket.java's index arithmetic for Sleep) -- they just draw from
+    different name->index maps with different valid ranges.
+    """
+
+    def __init__(
+        self,
+        device: NightingaleDevice,
+        room_name: str,
+        char_uuid: str,
+        key: str,
+        name: str,
+        icon: str,
+        track_by_label: dict[str, int],
+    ) -> None:
+        super().__init__(device, room_name, char_uuid, key, name, icon)
+        self._track_by_label = track_by_label
+
+    def _decode(self, data: bytes) -> str | None:
+        sound_index = decode_sound_track_id(data)
+        for label, index in self._track_by_label.items():
+            if index == sound_index:
+                return label
+        return None
+
+    def _encode(self, option: str) -> bytes:
+        return encode_sound_track_id(self._track_by_label[option])
+
+
+class NightingaleRelaxSoundTrackSelect(_NightingaleSoundTrackSelect):
     """Which Nature Sound plays under the Relax profile.
 
     Only audible while Sound Mode is Nature Sound -- see PROTOCOL.md.
-    Confirmed via decompiled construction code (Room.java's NatureSound
-    setup): wire format is big-endian 16-bit, matching soundIndex exactly.
     If the device is set to some value outside NATURE_SOUND_TRACKS,
     current_option comes back None rather than guessing.
     """
 
-    _attr_options = list(NATURE_SOUND_TRACK_BY_LABEL.keys())
+    _attr_options = list(NATURE_SOUND_TRACKS.keys())
 
     def __init__(self, device: NightingaleDevice, room_name: str) -> None:
         super().__init__(
@@ -198,14 +231,31 @@ class NightingaleRelaxSoundTrackSelect(_NightingaleSelectBase):
             "relax_sound_track",
             "Relax Sound Track",
             "mdi:pine-tree",
+            NATURE_SOUND_TRACKS,
         )
 
-    def _decode(self, data: bytes) -> str | None:
-        sound_index = decode_nature_sound_track(data)
-        for label, index in NATURE_SOUND_TRACK_BY_LABEL.items():
-            if index == sound_index:
-                return label
-        return None
 
-    def _encode(self, option: str) -> bytes:
-        return encode_nature_sound_track(NATURE_SOUND_TRACK_BY_LABEL[option])
+class NightingaleSleepSoundTrackSelect(_NightingaleSoundTrackSelect):
+    """Which Bedroom Blanket plays under the Sleep profile.
+
+    Only audible while Sound Mode is Sound Blanket -- see PROTOCOL.md.
+    The 15 values are 3 room styles (Absorptive/Neutral/Reflective) x 5
+    room types (Adult Bedroom/Kids/Snoring/Tinnitus/Hospital), confirmed
+    via decompiled construction code (Blanket.java). If the device is
+    set to some value outside BEDROOM_BLANKETS -- e.g. the leftover
+    non-functional value from before this was traced -- current_option
+    comes back None rather than guessing.
+    """
+
+    _attr_options = list(BEDROOM_BLANKETS.keys())
+
+    def __init__(self, device: NightingaleDevice, room_name: str) -> None:
+        super().__init__(
+            device,
+            room_name,
+            SLEEP_SOUND_TRACK_UUID,
+            "sleep_sound_track",
+            "Sleep Sound Track",
+            "mdi:bed",
+            BEDROOM_BLANKETS,
+        )
