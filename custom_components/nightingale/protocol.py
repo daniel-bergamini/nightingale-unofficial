@@ -41,6 +41,17 @@ SLEEP_VOLUME_UUID = "6dd68afc-9d26-4e67-95cb-c56c784360e7"
 # an 11-step level (0-10), NOT a 0-100 percentage as originally inferred
 # from the decompiled app's naming/shape alone -- see PROTOCOL.md.
 SLEEP_VOLUME_MAX = 10
+# Live A/B tested against a physical unit (2026-09-18): unlike Sleep
+# Volume, this one audibly changes whatever's currently playing -- despite
+# the vendor's own naming, THIS is the live volume control, not Sleep
+# Volume. Sleep Volume's write succeeds with no audible effect; its real
+# purpose is still unknown, so both are kept as separate entities under
+# their full vendor names rather than assuming one is simply "the" volume.
+# The 0-10 ceiling itself is carried over from Sleep Volume/Light Level's
+# independently binary-searched value, not separately binary-searched for
+# this characteristic -- a reasonable bet, not a confirmed measurement.
+RELAX_VOLUME_UUID = "bb23ae19-b2f0-46f4-930d-d89047d92c06"
+RELAX_VOLUME_MAX = 10
 SOUND_AUTO_ON_UUID = "11104650-14be-436b-a900-b72763c3be82"
 SOUND_AUTO_OFF_UUID = "5e6379e1-bd5b-44a2-ac16-74f845d6c388"
 
@@ -63,7 +74,6 @@ LOCATION_NAME_UUID = "37c4cabf-3f32-40ef-8ee3-92db35671faa"
 # to reference the UUID once confirmed.
 # ---------------------------------------------------------------------------
 
-RELAX_VOLUME_UUID = "bb23ae19-b2f0-46f4-930d-d89047d92c06"
 # PAGE_VOLUME_UUID intentionally omitted: ngVolumePageUUID in the
 # decompiled NightingaleGatt.java is itself
 # UUID.fromString("f2e85c5e6-97a4-4c3a-9742-5278bf3881ec") — 9 hex digits
@@ -82,11 +92,6 @@ FLASH_INDICATOR_UUID = "370ffb49-7626-4531-8b22-dbdeb359a304"
 LEGACY_ON_OFF_UUID = "c7d62e9d-c352-43b5-a00a-939254cfb3ca"  # not wired to anything in the app; do not use
 
 UNVERIFIED_NOTES = {
-    RELAX_VOLUME_UUID: (
-        "pattern-matched to sleep volume's *original* assumed 0-100 shape, "
-        "which live testing then proved wrong (real ceiling is 0-10) -- "
-        "don't trust 0-100 here either without the same live verification"
-    ),
     VOLUME_BALANCE_UUID: "format guessed as signed integer L/R skew, not traced/tested",
     SLEEP_SOUND_TRACK_UUID: "integer index, track list not enumerated",
     RELAX_SOUND_TRACK_UUID: "integer index, track list not enumerated",

@@ -5,9 +5,9 @@ Protocol details (UUIDs, byte formats, what's confirmed vs. unverified) live in 
 
 ## Status
 
-Implemented: power switches (Sound, Light), level sliders (Sleep Volume, Light Level — both 0–10, an 11-step scale confirmed by live testing, not a 0–100 percentage), and selects (Sound Mode, Light Color), all reflecting live device state via BLE notify where the characteristic supports it, rather than assuming the last command sent.
+Implemented: power switches (Sound, Light), level sliders (Sleep Volume, Relax Volume, Light Level — all 0–10, an 11-step scale confirmed by live testing, not a 0–100 percentage), and selects (Sound Mode, Light Color), all reflecting live device state via BLE notify where the characteristic supports it, rather than assuming the last command sent.
 
-Open question: Sleep Volume writes succeed with no error, but haven't been confirmed to audibly change anything yet. Given this vendor's characteristic names have already proven unreliable once (see PROTOCOL.md), it's plausible Relax Volume — not yet wired to any entity — is the one that actually gain-controls live playback. `tools/volume_ab_probe.py` walks through an A/B listening test for both.
+Known quirk: despite the name, **Relax Volume** — not Sleep Volume — is the characteristic that audibly controls live playback (confirmed via an A/B listening test, `tools/volume_ab_probe.py`). Sleep Volume's write succeeds but does nothing audible; its real purpose is unknown, so both are kept as separate entities under their full vendor names rather than guessing which one is "right." See PROTOCOL.md for the full writeup.
 
 Several other characteristics are unverified and intentionally not wired to any entity yet — see PROTOCOL.md.
 

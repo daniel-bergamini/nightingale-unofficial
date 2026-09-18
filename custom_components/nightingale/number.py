@@ -1,11 +1,19 @@
 """Volume and light-level number entities for Nightingale.
 
-Both are 11-step (0-10) level controls, not 0-100 percentages -- despite
-looking like a percent based on the decompiled app's naming and byte
-shape, live testing (binary-searching the write ceiling against a
+All three are 11-step (0-10) level controls, not 0-100 percentages --
+despite looking like a percent based on the decompiled app's naming and
+byte shape, live testing (binary-searching the write ceiling against a
 physical unit) found the device rejects anything above 10 with GATT
-Application Error 0x80. See SLEEP_VOLUME_MAX/LIGHT_LEVEL_MAX in
-protocol.py and PROTOCOL.md.
+Application Error 0x80. See SLEEP_VOLUME_MAX/LIGHT_LEVEL_MAX/
+RELAX_VOLUME_MAX in protocol.py and PROTOCOL.md.
+
+Sleep Volume and Relax Volume are kept as separate entities under their
+full vendor names rather than assuming one is simply "the" volume: an A/B
+listening test found Relax Volume audibly controls live playback while
+Sleep Volume's write succeeds with no audible effect, suggesting the
+device has two distinct sound profiles (matching PROTOCOL.md's separate,
+still-unverified Sleep/Relax sound-track characteristics) rather than one
+of the two names just being wrong.
 
 Same read-back-don't-assume architecture as switch.py: initial read on
 setup, live notify subscription where the characteristic supports it
@@ -32,6 +40,8 @@ from .device import NightingaleDevice, NightingaleNotFoundError
 from .protocol import (
     LIGHT_LEVEL_MAX,
     LIGHT_LEVEL_UUID,
+    RELAX_VOLUME_MAX,
+    RELAX_VOLUME_UUID,
     SLEEP_VOLUME_MAX,
     SLEEP_VOLUME_UUID,
     decode_level,
@@ -58,6 +68,15 @@ async def async_setup_entry(
                 "sleep_volume",
                 "Sleep Volume",
                 "mdi:volume-high",
+            ),
+            NightingaleLevelNumber(
+                device,
+                entry.title,
+                RELAX_VOLUME_UUID,
+                RELAX_VOLUME_MAX,
+                "relax_volume",
+                "Relax Volume",
+                "mdi:volume-medium",
             ),
             NightingaleLevelNumber(
                 device,

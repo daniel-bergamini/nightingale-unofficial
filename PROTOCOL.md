@@ -41,8 +41,8 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 | Name | UUID | Format |
 |---|---|---|
 | Sound mode | `1eb5c56d-5970-4294-9208-f16d66c396ef` | 1 byte, enum ordinal — `0x00` = Sound Blanket, `0x01` = Nature Sound |
-| Sleep volume | `6dd68afc-9d26-4e67-95cb-c56c784360e7` | 1 byte, `0x00`–`0x0A` (0–10, an 11-step level — **not** 0–100%; see "Confirmed: Real Range Is 0–10" below) |
-| Relax volume | `bb23ae19-b2f0-46f4-930d-d89047d92c06` | 1 byte, range unknown (unverified — was pattern-matched to sleep volume's *original*, now-disproven 0–100 shape; don't assume 0–10 either without testing) |
+| Sleep volume | `6dd68afc-9d26-4e67-95cb-c56c784360e7` | 1 byte, `0x00`–`0x0A` (0–10, an 11-step level — **not** 0–100%; see "Confirmed: Real Range Is 0–10" below). Write succeeds; **live A/B tested and found to have no audible effect** on playback — real function unknown. |
+| Relax volume | `bb23ae19-b2f0-46f4-930d-d89047d92c06` | 1 byte, `0x00`–`0x0A` assumed (0–10, carried over from sleep volume/light level's independently-binary-searched ceiling, not separately re-verified). **Live A/B tested and confirmed to audibly control live playback** — despite the name, this is the volume control that actually does something right now. |
 | Page volume | ~~`f2e85c5e6-97a4-4c3a-9742-5278bf3881ec`~~ — **invalid, unusable** | 1 byte, `0x00`–`0x64` (unverified) |
 | Volume balance (L/R) | `c32f5045-d621-4c9e-8f9b-557b5a5d65cd` | Integer, likely signed for L/R skew (unverified) |
 | Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | Integer index (unverified — track list not yet enumerated) |
@@ -105,10 +105,33 @@ it's traced to construction code but not yet live-tested. Live testing
   out-of-range value under that write mode looks identical to it being
   accepted. Only `with-response` results are trustworthy here.
 
-So both are 11-step (`0`–`10`) level controls, not percentages. This also
-means "Relax volume"'s `0x00`–`0x64` pattern-match (based on sleep
-volume's original, since-disproven shape) is now doubly unverified —
-don't assume `0`–`10` there either without the same live test.
+So both are 11-step (`0`–`10`) level controls, not percentages.
+
+## Confirmed: Relax Volume, Not Sleep Volume, Controls Live Playback
+
+With sleep volume's range fixed, a follow-up puzzle came up: raising it
+produced no audible change at all, on a unit actively playing a nature
+sound loop with sound/light both on. Rather than assume the
+characteristic was simply broken, an A/B listening test
+(`tools/volume_ab_probe.py`, 2026-09-18) wrote a quiet value then a loud
+value to each of sleep volume and relax volume in turn, pausing for a
+human to actually listen:
+
+- Sleep volume: write succeeds, **no audible change** either direction.
+- Relax volume: write succeeds, **clearly audible change** both
+  directions.
+
+So despite the name, **relax volume is the characteristic that actually
+gain-controls whatever's currently playing** — the same kind of
+vendor-naming trap as `SoundOn`/`SoundOff` turning out to be schedule
+setters rather than the power toggle (see "Notes on Schedule vs.
+Immediate Control" below). Sleep volume's real purpose is still unknown;
+it may only matter for some distinct, not-yet-triggered playback mode,
+given PROTOCOL.md already lists separate (unverified) sleep/relax
+sound-track characteristics suggesting two distinct sound profiles exist.
+Both are kept as separate entities under their full vendor names rather
+than collapsing them into one "volume" control or guessing which name is
+"right."
 
 ## Known Vendor Bug: Page Volume UUID
 
