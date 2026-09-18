@@ -1,4 +1,9 @@
-"""Sound mode and light color select entities for Nightingale.
+"""Select entities for Nightingale: Sound Mode, Light Color, sound tracks.
+
+The Sleep (Sound Blanket) profile's track is split into two selects --
+Room Type and Surface Type -- matching the vendor's own setup wizard
+rather than one flat 15-item list; see
+_NightingaleBlanketDimensionSelect below.
 
 Same read-back-don't-assume architecture as switch.py/number.py: initial
 read on setup, live notify subscription where the characteristic
@@ -21,17 +26,22 @@ from . import NightingaleConfigEntry
 from .const import MANUFACTURER, MODEL
 from .device import NightingaleDevice, NightingaleNotFoundError
 from .protocol import (
-    BEDROOM_BLANKETS,
     LIGHT_COLOR_PRESETS,
     LIGHT_COLOR_UUID,
     NATURE_SOUND_TRACKS,
     RELAX_SOUND_TRACK_UUID,
+    ROOM_STYLE_LABELS,
+    ROOM_TYPE_LABELS,
     SLEEP_SOUND_TRACK_UUID,
     SOUND_MODE_UUID,
+    RoomStyle,
+    RoomType,
     SoundMode,
+    decode_blanket,
     decode_rgb,
     decode_sound_mode,
     decode_sound_track_id,
+    encode_blanket,
     encode_rgb,
     encode_sound_mode,
     encode_sound_track_id,
@@ -62,7 +72,8 @@ async def async_setup_entry(
             NightingaleSoundModeSelect(device, entry.title),
             NightingaleLightColorSelect(device, entry.title),
             NightingaleRelaxSoundTrackSelect(device, entry.title),
-            NightingaleSleepSoundTrackSelect(device, entry.title),
+            NightingaleSleepRoomTypeSelect(device, entry.title),
+            NightingaleSleepSurfaceTypeSelect(device, entry.title),
         ]
     )
 
@@ -235,27 +246,106 @@ class NightingaleRelaxSoundTrackSelect(_NightingaleSoundTrackSelect):
         )
 
 
-class NightingaleSleepSoundTrackSelect(_NightingaleSoundTrackSelect):
-    """Which Bedroom Blanket plays under the Sleep profile.
+class _NightingaleBlanketDimensionSelect(_NightingaleSelectBase):
+    """Shared plumbing for the two Bedroom Blanket dimension selects.
 
-    Only audible while Sound Mode is Sound Blanket -- see PROTOCOL.md.
-    The 15 values are 3 room styles (Absorptive/Neutral/Reflective) x 5
-    room types (Adult Bedroom/Kids/Snoring/Tinnitus/Hospital), confirmed
-    via decompiled construction code (Blanket.java). If the device is
-    set to some value outside BEDROOM_BLANKETS -- e.g. the leftover
-    non-functional value from before this was traced -- current_option
-    comes back None rather than guessing.
+    Matches the vendor's own setup wizard (SelectingBlanketFragment.java):
+    a Blanket is chosen from two independent dimensions, Room Type and
+    Surface Type, not one flat 15-item list. Both selects read/write the
+    same combined SLEEP_SOUND_TRACK_UUID index, so changing one has to
+    preserve whatever the other currently is -- async_select_option reads
+    the combined value fresh (not cached) before recombining and writing,
+    overriding the generic _encode-only pattern the base class assumes.
     """
 
-    _attr_options = list(BEDROOM_BLANKETS.keys())
+    def __init__(
+        self, device: NightingaleDevice, room_name: str, key: str, name: str, icon: str
+    ) -> None:
+        super().__init__(device, room_name, SLEEP_SOUND_TRACK_UUID, key, name, icon)
+
+    def _label_for(self, room_type: RoomType, room_style: RoomStyle) -> str:
+        raise NotImplementedError
+
+    def _apply(
+        self, option: str, room_type: RoomType, room_style: RoomStyle
+    ) -> tuple[RoomType, RoomStyle]:
+        raise NotImplementedError
+
+    def _decode(self, data: bytes) -> str | None:
+        components = decode_blanket(data)
+        if components is None:
+            return None
+        return self._label_for(*components)
+
+    async def async_select_option(self, option: str) -> None:
+        try:
+            current_raw = await self._device.async_read_gatt(self._char_uuid)
+        except (NightingaleNotFoundError, BleakError, TimeoutError):
+            _LOGGER.warning(
+                "%s: could not read %s before recombining -- defaulting the "
+                "other dimension to Adult Bedroom/Absorptive",
+                self._device.address,
+                self._char_uuid,
+                exc_info=True,
+            )
+            components = None
+        else:
+            components = decode_blanket(current_raw)
+        room_type, room_style = components or (RoomType.BEDROOM, RoomStyle.ABSORPTIVE)
+        room_type, room_style = self._apply(option, room_type, room_style)
+        await self._device.async_write_gatt(
+            self._char_uuid, encode_blanket(room_type, room_style)
+        )
+        await self._async_refresh_state()
+
+
+class NightingaleSleepRoomTypeSelect(_NightingaleBlanketDimensionSelect):
+    """Room Type half of the Sleep (Sound Blanket) profile selection.
+
+    Only takes effect while Sound Mode is Sound Blanket -- see
+    PROTOCOL.md.
+    """
+
+    _attr_options = list(ROOM_TYPE_LABELS.values())
+
+    def __init__(self, device: NightingaleDevice, room_name: str) -> None:
+        super().__init__(
+            device, room_name, "sleep_room_type", "Sleep Blanket Room Type", "mdi:bed"
+        )
+
+    def _label_for(self, room_type: RoomType, room_style: RoomStyle) -> str:
+        return ROOM_TYPE_LABELS[room_type]
+
+    def _apply(
+        self, option: str, room_type: RoomType, room_style: RoomStyle
+    ) -> tuple[RoomType, RoomStyle]:
+        new_type = next(rt for rt, label in ROOM_TYPE_LABELS.items() if label == option)
+        return new_type, room_style
+
+
+class NightingaleSleepSurfaceTypeSelect(_NightingaleBlanketDimensionSelect):
+    """Surface Type half of the Sleep (Sound Blanket) profile selection.
+
+    Only takes effect while Sound Mode is Sound Blanket -- see
+    PROTOCOL.md.
+    """
+
+    _attr_options = list(ROOM_STYLE_LABELS.values())
 
     def __init__(self, device: NightingaleDevice, room_name: str) -> None:
         super().__init__(
             device,
             room_name,
-            SLEEP_SOUND_TRACK_UUID,
-            "sleep_sound_track",
-            "Sleep Sound Track",
-            "mdi:bed",
-            BEDROOM_BLANKETS,
+            "sleep_surface_type",
+            "Sleep Blanket Surface Type",
+            "mdi:texture-box",
         )
+
+    def _label_for(self, room_type: RoomType, room_style: RoomStyle) -> str:
+        return ROOM_STYLE_LABELS[room_style]
+
+    def _apply(
+        self, option: str, room_type: RoomType, room_style: RoomStyle
+    ) -> tuple[RoomType, RoomStyle]:
+        new_style = next(rs for rs, label in ROOM_STYLE_LABELS.items() if label == option)
+        return room_type, new_style

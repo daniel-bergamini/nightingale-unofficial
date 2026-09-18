@@ -46,7 +46,7 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 | Page sound (test tone trigger) | `6500a2cd-6b0d-494a-af32-878b5bfa45cd` | Big-endian 16-bit `soundIndex`, same shape as the Sleep/Relax track characteristics (unverified format/value). One-shot device-setup test-tone trigger, not an ongoing mode — see "Known Vendor Bug: Page Volume UUID (Recovered, Not a Dead End)" below |
 | Page volume (test tone) | ~~`f2e85c5e6-97a4-4c3a-9742-5278bf3881ec`~~ (typo in `NightingaleGatt.java`) → real UUID `2e85c5e6-97a4-4c3a-9742-5278bf3881ec` (from `BleManager.java`) | Format unverified. Recovered, not unusable — see "Known Vendor Bug" below |
 | Volume balance (L/R) | `c32f5045-d621-4c9e-8f9b-557b5a5d65cd` | **Confirmed**: signed 1 byte, `-10`–`10` — `setBalance(Integer)`: `if (balance >= -10 && balance <= 10) { byte[] output = {(byte) balance.intValue()}; ...}` (`LeNightingaleDevice.java`) |
-| Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | **Confirmed**: big-endian 16-bit `soundIndex`, same format as Relax sound track — see `BEDROOM_BLANKETS` in `protocol.py` and "Confirmed: Bedroom Blanket Ids" below |
+| Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | **Confirmed**: big-endian 16-bit `soundIndex`, same format as Relax sound track — vendor's own app picks this from two independent dimensions, Room Type × Surface Type, not one flat value; see "Confirmed: Bedroom Blanket Ids" → "Room Type / Surface Type, Not One Flat List" below |
 | Relax sound track | `0e4fa979-6e76-45f0-8887-762ee399121c` | **Confirmed**: big-endian 16-bit `soundIndex` — see `NATURE_SOUND_TRACKS` in `protocol.py` and "Confirmed: Nature Sound Track Is a Big-Endian soundIndex" below |
 | Sound scheduled (enable flag) | `86dcd724-031d-4ebe-a2e1-912670a06c3c` | **Confirmed**: 1 byte, `0x00`/`0x01` — `setSoundScheduled(1)`/`setSoundScheduled(0)` called with literal integers (`SetSleepScheduleFragment.java`) |
 | **Sound auto-on time** ⚠️ not an immediate toggle | `11104650-14be-436b-a900-b72763c3be82` | 2 bytes: `[minute, hour]`, both plain integers, 24hr |
@@ -254,12 +254,42 @@ let this get checked directly — are now source-confirmed, not guessed.
 `1280` (Sleep sound track's restored-but-dead original value) isn't in
 this list — so the write path was never broken, there was simply
 nothing valid selected. `BEDROOM_BLANKETS` in `protocol.py` holds the
-full name→id map (name + room style combined into one label, since
-`Blanket.generateBlanketName()` only varies by room type — style is a
-separate dimension distinguished only in the description string, not
-the name). Wired up as the "Sleep Sound Track" select entity;
-`tools/init_state.py` now writes a real value (`110`, Adult Bedroom
+full name→id map for reference (matches PROTOCOL.md/README), derived
+from the two dimensions below rather than hand-maintained separately.
+`tools/init_state.py` writes a real value (`110`, Adult Bedroom
 Blanket/Absorptive) instead of restoring the non-functional `1280`.
+
+### Room Type / Surface Type, Not One Flat List
+
+A flat 15-item picker is a poor match for how the vendor's own app
+actually presents this. `SelectingBlanketFragment.java` — part of the
+setup wizard — picks a Blanket from two independent controls, per its
+own argument constants:
+
+```java
+public static final String ARG_ROOM_TYPE = "roomType";
+public static final String ARG_SURFACE_TYPE = "surfaceType";
+```
+
+So the two vendor-defined dimensions are literally **Room Type**
+(Adult Bedroom, Infant/Toddler & Youth Room, Snoring, Tinnitus,
+Hospital Room) and **Surface Type** (Absorptive, Neutral, Reflective).
+Surface Type's three labels are exact — taken directly from
+`Blanket.generateBlanketDescription()`'s literal strings. Room Type's
+labels are inferred from resource-id naming
+(`adult_bedroom_type`, `childsroom_type`, `hospital_type`,
+`tinnitus_type`, `snoring_type` in `SelectingBlanketFragment.java`) —
+no `strings.xml` was available in this decompile to confirm the exact
+rendered text, so treat these five labels as reasonable, name-derived
+guesses rather than a byte-for-byte quote.
+
+Implemented as two select entities (`RoomType`/`RoomStyle` enums,
+`encode_blanket`/`decode_blanket` in `protocol.py`, mirroring
+`Blanket.getBlanketIndex()`'s arithmetic) rather than the original flat
+select: **Sleep Blanket Room Type** and **Sleep Blanket Surface Type**.
+Both read and write the same combined `SLEEP_SOUND_TRACK_UUID` value —
+changing one re-reads the characteristic first so the other dimension's
+current setting isn't clobbered, rather than assuming a cached value.
 
 ## Known Vendor Bug: Page Volume UUID (Recovered, Not a Dead End)
 

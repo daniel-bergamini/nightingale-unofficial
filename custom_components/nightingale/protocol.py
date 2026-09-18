@@ -80,23 +80,64 @@ NATURE_SOUND_TRACKS: dict[str, int] = {
 # 1280 big-endian, was never a valid blanket id in the first place --
 # 1280 isn't in this table, so there was nothing wrong with the write
 # path, just nothing valid to select.
+#
+# The vendor's own setup wizard (SelectingBlanketFragment.java) picks a
+# Blanket from exactly two independent dimensions -- its argument
+# constants are literally named ARG_ROOM_TYPE ("roomType") and
+# ARG_SURFACE_TYPE ("surfaceType") -- rather than one flat 15-item list.
+# RoomType/RoomStyle below mirror that: two selects (see select.py)
+# combine into one write via encode_blanket, the same math as
+# Blanket.getBlanketIndex(). Room Type labels are inferred from resource
+# ID naming (adult_bedroom_type, childsroom_type, etc. -- no strings.xml
+# was available to confirm the exact rendered text); Surface Type labels
+# are exact, taken directly from generateBlanketDescription()'s literal
+# strings ("Absorptive", "Neutral", "Reflective").
 SLEEP_SOUND_TRACK_UUID = "a54d9906-4298-4656-9bd3-7095e87365d6"
+
+
+class RoomType(IntEnum):
+    BEDROOM = 1
+    KIDS = 2
+    SNORING = 3
+    TINNITUS = 4
+    HOSPITAL = 5
+
+
+class RoomStyle(IntEnum):
+    ABSORPTIVE = 100
+    NEUTRAL = 200
+    REFLECTIVE = 300
+
+
+ROOM_TYPE_OFFSETS: dict[RoomType, int] = {
+    RoomType.BEDROOM: 10,
+    RoomType.KIDS: 15,
+    RoomType.SNORING: 20,
+    RoomType.TINNITUS: 25,
+    RoomType.HOSPITAL: 30,
+}
+
+ROOM_TYPE_LABELS: dict[RoomType, str] = {
+    RoomType.BEDROOM: "Adult Bedroom",
+    RoomType.KIDS: "Infant, Toddler & Youth Room",
+    RoomType.SNORING: "Snoring",
+    RoomType.TINNITUS: "Tinnitus",
+    RoomType.HOSPITAL: "Hospital Room",
+}
+
+ROOM_STYLE_LABELS: dict[RoomStyle, str] = {
+    RoomStyle.ABSORPTIVE: "Absorptive",
+    RoomStyle.NEUTRAL: "Neutral",
+    RoomStyle.REFLECTIVE: "Reflective",
+}
+
+# Flat name->index reference, derived from the two dimensions above
+# rather than hand-maintained separately -- matches PROTOCOL.md's table.
 BEDROOM_BLANKETS: dict[str, int] = {
-    "Adult Bedroom Blanket (Absorptive)": 110,
-    "Adult Bedroom Blanket (Neutral)": 210,
-    "Adult Bedroom Blanket (Reflective)": 310,
-    "Infant, Toddler & Youth Room Blanket (Absorptive)": 115,
-    "Infant, Toddler & Youth Room Blanket (Neutral)": 215,
-    "Infant, Toddler & Youth Room Blanket (Reflective)": 315,
-    "Snoring Blanket (Absorptive)": 120,
-    "Snoring Blanket (Neutral)": 220,
-    "Snoring Blanket (Reflective)": 320,
-    "Tinnitus Blanket (Absorptive)": 125,
-    "Tinnitus Blanket (Neutral)": 225,
-    "Tinnitus Blanket (Reflective)": 325,
-    "Hospital Room Blanket (Absorptive)": 130,
-    "Hospital Room Blanket (Neutral)": 230,
-    "Hospital Room Blanket (Reflective)": 330,
+    f"{ROOM_TYPE_LABELS[room_type]} Blanket ({ROOM_STYLE_LABELS[room_style]})": int(room_style)
+    + offset
+    for room_type, offset in ROOM_TYPE_OFFSETS.items()
+    for room_style in RoomStyle
 }
 SOUND_AUTO_ON_UUID = "11104650-14be-436b-a900-b72763c3be82"
 SOUND_AUTO_OFF_UUID = "5e6379e1-bd5b-44a2-ac16-74f845d6c388"
@@ -271,6 +312,37 @@ def encode_sound_track_id(sound_index: int) -> bytes:
 def decode_sound_track_id(data: bytes) -> int:
     """Decode a sound track selection. Returns the raw soundIndex."""
     return int.from_bytes(data, "big")
+
+
+def encode_blanket(room_type: RoomType, room_style: RoomStyle) -> bytes:
+    """Encode a Bedroom Blanket selection from its two vendor dimensions.
+
+    Same wire format as encode_sound_track_id (SLEEP_SOUND_TRACK_UUID is
+    one of the two sound-track characteristics) -- see
+    Blanket.getBlanketIndex() for the roomStyleIndex + roomType-offset
+    arithmetic this mirrors.
+    """
+    return encode_sound_track_id(int(room_style) + ROOM_TYPE_OFFSETS[room_type])
+
+
+def decode_blanket(data: bytes) -> tuple[RoomType, RoomStyle] | None:
+    """Decode a Bedroom Blanket selection into (Room Type, Surface Type).
+
+    Returns None if the raw value doesn't correspond to any of the 15
+    known combinations (e.g. a leftover non-functional value) rather
+    than guessing.
+    """
+    index = decode_sound_track_id(data)
+    style_value = (index // 100) * 100
+    try:
+        room_style = RoomStyle(style_value)
+    except ValueError:
+        return None
+    offset = index - style_value
+    for room_type, room_type_offset in ROOM_TYPE_OFFSETS.items():
+        if room_type_offset == offset:
+            return room_type, room_style
+    return None
 
 
 def encode_schedule_time(hour: int, minute: int) -> bytes:
