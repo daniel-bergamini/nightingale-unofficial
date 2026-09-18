@@ -52,6 +52,20 @@ SLEEP_VOLUME_MAX = 10
 # this characteristic -- a reasonable bet, not a confirmed measurement.
 RELAX_VOLUME_UUID = "bb23ae19-b2f0-46f4-930d-d89047d92c06"
 RELAX_VOLUME_MAX = 10
+# Confirmed via decompiled construction code (Room.java's NatureSound
+# setup) and cross-checked live: wire format is a big-endian 16-bit
+# integer matching NatureSound.soundIndex exactly. The recovered original
+# value b'\x01\xfe' = 0x01FE = 510 = "Lakeshore" -- which fits what was
+# actually heard (crickets, and a knocking sound more likely a frog than
+# a bird) far better than assuming that byte pair was a plain 0-9 index.
+RELAX_SOUND_TRACK_UUID = "0e4fa979-6e76-45f0-8887-762ee399121c"
+NATURE_SOUND_TRACKS: dict[str, int] = {
+    "Lakeshore": 510,
+    "Crickets": 520,
+    "Loons": 530,
+    "Whale Songs": 540,
+    "Rainstorm": 550,
+}
 SOUND_AUTO_ON_UUID = "11104650-14be-436b-a900-b72763c3be82"
 SOUND_AUTO_OFF_UUID = "5e6379e1-bd5b-44a2-ac16-74f845d6c388"
 
@@ -82,8 +96,11 @@ LOCATION_NAME_UUID = "37c4cabf-3f32-40ef-8ee3-92db35671faa"
 # so this characteristic is unusable and unimplementable as shipped. See
 # PROTOCOL.md "Known Vendor Bug: Page Volume UUID".
 VOLUME_BALANCE_UUID = "c32f5045-d621-4c9e-8f9b-557b5a5d65cd"
+# Confirmed 2 bytes live (original value b'\x05\x00'), but unlike
+# RELAX_SOUND_TRACK_UUID, the corresponding BedroomBlanket ID scheme
+# isn't traced yet -- 0x0500 = 1280 big-endian doesn't match anything
+# known. Stays unverified until that's found.
 SLEEP_SOUND_TRACK_UUID = "a54d9906-4298-4656-9bd3-7095e87365d6"
-RELAX_SOUND_TRACK_UUID = "0e4fa979-6e76-45f0-8887-762ee399121c"
 SOUND_SCHEDULED_UUID = "86dcd724-031d-4ebe-a2e1-912670a06c3c"
 LIGHT_SCHEDULED_UUID = "8ae4953e-0db8-11e6-a148-3e1d05defe78"
 DISABLE_BUTTON_UUID = "b686b17d-b0dd-4415-bb76-895745d9d5ed"
@@ -93,8 +110,7 @@ LEGACY_ON_OFF_UUID = "c7d62e9d-c352-43b5-a00a-939254cfb3ca"  # not wired to anyt
 
 UNVERIFIED_NOTES = {
     VOLUME_BALANCE_UUID: "format guessed as signed integer L/R skew, not traced/tested",
-    SLEEP_SOUND_TRACK_UUID: "integer index, track list not enumerated",
-    RELAX_SOUND_TRACK_UUID: "integer index, track list not enumerated",
+    SLEEP_SOUND_TRACK_UUID: "confirmed 2-byte big-endian format, but the BedroomBlanket id list isn't traced yet -- do not guess valid values",
     SOUND_SCHEDULED_UUID: "guessed 0x00/0x01 enable flag, not traced/tested",
     LIGHT_SCHEDULED_UUID: "guessed 0x00/0x01 enable flag, not traced/tested",
     DISABLE_BUTTON_UUID: "format entirely unknown",
@@ -171,6 +187,21 @@ def encode_rgb(red: int, green: int, blue: int) -> bytes:
 def decode_rgb(data: bytes) -> tuple[int, int, int]:
     """Decode a 3-byte RGB light color."""
     return (data[0], data[1], data[2])
+
+
+def encode_nature_sound_track(sound_index: int) -> bytes:
+    """Encode a Nature Sound track selection (RELAX_SOUND_TRACK_UUID).
+
+    Big-endian 16-bit, matching the decompiled app's NatureSound.soundIndex
+    field exactly. Use NATURE_SOUND_TRACKS for the confirmed name->index
+    map rather than passing an arbitrary integer.
+    """
+    return sound_index.to_bytes(2, "big")
+
+
+def decode_nature_sound_track(data: bytes) -> int:
+    """Decode a Nature Sound track selection. Returns the raw soundIndex."""
+    return int.from_bytes(data, "big")
 
 
 def encode_schedule_time(hour: int, minute: int) -> bytes:

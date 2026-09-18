@@ -23,10 +23,14 @@ from .device import NightingaleDevice, NightingaleNotFoundError
 from .protocol import (
     LIGHT_COLOR_PRESETS,
     LIGHT_COLOR_UUID,
+    NATURE_SOUND_TRACKS,
+    RELAX_SOUND_TRACK_UUID,
     SOUND_MODE_UUID,
     SoundMode,
+    decode_nature_sound_track,
     decode_rgb,
     decode_sound_mode,
+    encode_nature_sound_track,
     encode_rgb,
     encode_sound_mode,
 )
@@ -43,6 +47,8 @@ SOUND_MODE_BY_LABEL = {label: mode for mode, label in SOUND_MODE_LABELS.items()}
 LIGHT_COLOR_LABELS = {rgb: name.capitalize() for name, rgb in LIGHT_COLOR_PRESETS.items()}
 LIGHT_COLOR_RGB_BY_LABEL = {label: rgb for rgb, label in LIGHT_COLOR_LABELS.items()}
 
+NATURE_SOUND_TRACK_BY_LABEL = dict(NATURE_SOUND_TRACKS)  # label == name here, no transform needed
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -55,6 +61,7 @@ async def async_setup_entry(
         [
             NightingaleSoundModeSelect(device, entry.title),
             NightingaleLightColorSelect(device, entry.title),
+            NightingaleRelaxSoundTrackSelect(device, entry.title),
         ]
     )
 
@@ -169,3 +176,36 @@ class NightingaleLightColorSelect(_NightingaleSelectBase):
 
     def _encode(self, option: str) -> bytes:
         return encode_rgb(*LIGHT_COLOR_RGB_BY_LABEL[option])
+
+
+class NightingaleRelaxSoundTrackSelect(_NightingaleSelectBase):
+    """Which Nature Sound plays under the Relax profile.
+
+    Only audible while Sound Mode is Nature Sound -- see PROTOCOL.md.
+    Confirmed via decompiled construction code (Room.java's NatureSound
+    setup): wire format is big-endian 16-bit, matching soundIndex exactly.
+    If the device is set to some value outside NATURE_SOUND_TRACKS,
+    current_option comes back None rather than guessing.
+    """
+
+    _attr_options = list(NATURE_SOUND_TRACK_BY_LABEL.keys())
+
+    def __init__(self, device: NightingaleDevice, room_name: str) -> None:
+        super().__init__(
+            device,
+            room_name,
+            RELAX_SOUND_TRACK_UUID,
+            "relax_sound_track",
+            "Relax Sound Track",
+            "mdi:pine-tree",
+        )
+
+    def _decode(self, data: bytes) -> str | None:
+        sound_index = decode_nature_sound_track(data)
+        for label, index in NATURE_SOUND_TRACK_BY_LABEL.items():
+            if index == sound_index:
+                return label
+        return None
+
+    def _encode(self, option: str) -> bytes:
+        return encode_nature_sound_track(NATURE_SOUND_TRACK_BY_LABEL[option])

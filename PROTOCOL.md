@@ -45,8 +45,8 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 | Relax volume | `bb23ae19-b2f0-46f4-930d-d89047d92c06` | 1 byte, `0x00`–`0x0A` assumed (0–10, carried over from sleep volume/light level's independently-binary-searched ceiling, not separately re-verified). **Live A/B tested and confirmed to audibly control live playback** — despite the name, this is the volume control that actually does something right now. |
 | Page volume | ~~`f2e85c5e6-97a4-4c3a-9742-5278bf3881ec`~~ — **invalid, unusable** | 1 byte, `0x00`–`0x64` (unverified) |
 | Volume balance (L/R) | `c32f5045-d621-4c9e-8f9b-557b5a5d65cd` | Integer, likely signed for L/R skew (unverified) |
-| Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | Byte width unconfirmed — see "Relax Sound Track Is (At Least) 2 Bytes" below before assuming 1 byte (unverified — track list not yet enumerated) |
-| Relax sound track | `0e4fa979-6e76-45f0-8887-762ee399121c` | **At least 2 bytes** (live-confirmed: original value read back `b'\x01\xfe'`), exact encoding still unverified — see "Relax Sound Track Is (At Least) 2 Bytes" below |
+| Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | **Confirmed 2 bytes** (original value `b'\x05\x00'`), but the `BedroomBlanket` id scheme isn't traced yet — see "Confirmed: Nature Sound Track Is a Big-Endian soundIndex" below (unverified — do not guess valid values) |
+| Relax sound track | `0e4fa979-6e76-45f0-8887-762ee399121c` | **Confirmed**: big-endian 16-bit `soundIndex` — see `NATURE_SOUND_TRACKS` in `protocol.py` and "Confirmed: Nature Sound Track Is a Big-Endian soundIndex" below |
 | Sound scheduled (enable flag) | `86dcd724-031d-4ebe-a2e1-912670a06c3c` | Integer, likely `0x00`/`0x01` (unverified) |
 | **Sound auto-on time** ⚠️ not an immediate toggle | `11104650-14be-436b-a900-b72763c3be82` | 2 bytes: `[minute, hour]`, both plain integers, 24hr |
 | **Sound auto-off time** ⚠️ not an immediate toggle | `5e6379e1-bd5b-44a2-ac16-74f845d6c388` | 2 bytes: `[minute, hour]`, same format |
@@ -178,18 +178,49 @@ crickets plus what's more likely a tree frog than a bird, on reflection.
 A follow-up read-only check (`tools/track_probe.py`, no `--write`)
 confirmed `SLEEP_SOUND_TRACK_UUID` is also 2 bytes, original value
 `b'\x05\x00'`. So both sound-track characteristics are 2 bytes on this
-unit; `tools/init_state.py` now restores both. The exact 2-byte
-encoding is still unconfirmed — `track_probe.py`'s `--write` mode now
-sweeps byte 0 while holding byte 1 fixed at the real original value
-(guessing byte 0 is the meaningful index), rather than clobbering both
-bytes with a 1-byte write, but that split itself is still a guess, not
-a decoded format.
+unit; `tools/init_state.py` now restores both. Relax sound track's
+exact encoding is now decoded (see next section); Sleep sound track's
+is not.
 
 Practical implication for anyone probing this further: don't assume
 byte width from naming or from sibling characteristics. Read and log
 the actual current value **before** writing anything, for every
 characteristic, every time — the exact lesson `tools/init_state.py`
 and this incident exist to reinforce.
+
+## Confirmed: Nature Sound Track Is a Big-Endian soundIndex
+
+Decompiled source settled what the 2 bytes actually mean, at least for
+Relax sound track. `bluerocket/cgm/model/Room.java`'s constructor builds
+its Nature Sound list like this (names condensed from the real
+if/equals chain):
+
+```java
+if (natureSound.name.get().equals("Lakeshore"))   natureSound.soundIndex.set(510);
+if (natureSound.name.get().equals("Crickets"))    natureSound.soundIndex.set(520);
+if (natureSound.name.get().equals("Loons"))       natureSound.soundIndex.set(530);
+if (natureSound.name.get().equals("Whale Songs")) natureSound.soundIndex.set(540);
+if (natureSound.name.get().equals("Rainstorm"))   natureSound.soundIndex.set(550);
+```
+
+The recovered original value, `b'\x01\xfe'`, read as a **big-endian
+16-bit integer** is `0x01FE = 510` — exactly `soundIndex` for
+"Lakeshore". Not a coincidence: that's the wire format. (This also
+retroactively explains the "crickets and a tree frog" description
+better than a literal name match would have — a lakeshore-at-night
+ambiance plausibly includes both as part of the scene.)
+
+`RELAX_SOUND_TRACK_UUID` is now a first-class confirmed characteristic:
+`encode_nature_sound_track`/`decode_nature_sound_track` in `protocol.py`
+handle the big-endian conversion, and `NATURE_SOUND_TRACKS` holds the
+name→`soundIndex` map above. Wired up as the "Relax Sound Track" select
+entity.
+
+Sleep sound track's original value, `b'\x05\x00'` (`0x0500 = 1280`
+big-endian), doesn't match this numbering and remains unverified —
+`NatureSound extends BedroomBlanket` in the decompiled model, so the
+generic `BedroomBlanket` class likely has its own id scheme entirely
+separate from `NatureSound.soundIndex`. Not yet traced.
 
 ## Known Vendor Bug: Page Volume UUID
 
