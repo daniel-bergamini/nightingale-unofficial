@@ -41,8 +41,8 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 | Name | UUID | Format |
 |---|---|---|
 | Sound mode | `1eb5c56d-5970-4294-9208-f16d66c396ef` | 1 byte, enum ordinal — `0x00` = Sound Blanket, `0x01` = Nature Sound |
-| Sleep volume | `6dd68afc-9d26-4e67-95cb-c56c784360e7` | 1 byte, `0x00`–`0x64` (0–100%) |
-| Relax volume | `bb23ae19-b2f0-46f4-930d-d89047d92c06` | 1 byte, `0x00`–`0x64` (unverified, pattern-matched to sleep volume) |
+| Sleep volume | `6dd68afc-9d26-4e67-95cb-c56c784360e7` | 1 byte, `0x00`–`0x0A` (0–10, an 11-step level — **not** 0–100%; see "Confirmed: Real Range Is 0–10" below) |
+| Relax volume | `bb23ae19-b2f0-46f4-930d-d89047d92c06` | 1 byte, range unknown (unverified — was pattern-matched to sleep volume's *original*, now-disproven 0–100 shape; don't assume 0–10 either without testing) |
 | Page volume | ~~`f2e85c5e6-97a4-4c3a-9742-5278bf3881ec`~~ — **invalid, unusable** | 1 byte, `0x00`–`0x64` (unverified) |
 | Volume balance (L/R) | `c32f5045-d621-4c9e-8f9b-557b5a5d65cd` | Integer, likely signed for L/R skew (unverified) |
 | Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | Integer index (unverified — track list not yet enumerated) |
@@ -55,7 +55,7 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 
 | Name | UUID | Format |
 |---|---|---|
-| Light level | `adfa5e07-ebe3-4362-ae05-b63cc5aad5b1` | 1 byte, `0x00`–`0x64` (0–100%) |
+| Light level | `adfa5e07-ebe3-4362-ae05-b63cc5aad5b1` | 1 byte, `0x00`–`0x0A` (0–10, same 11-step level as sleep volume; see below) |
 | Light color | `4bf0b1b1-aadc-47aa-b5fb-c7f9affa2462` | 3 bytes, RGB. Confirmed: White `FF FF FF`, Green `00 FF 00`, Blue `00 00 FF`. Inferred: Red `FF 00 00` |
 | Light scheduled (enable flag) | `8ae4953e-0db8-11e6-a148-3e1d05defe78` | Integer, likely `0x00`/`0x01` (unverified) |
 | **Light auto-on time** | `0eef9fab-7878-4e33-9201-f9029a342530` | 2 bytes: `[minute, hour]`, same schedule format as sound |
@@ -80,6 +80,35 @@ Since that backend is discontinued, **this entire branch of the protocol is
 non-functional** and shouldn't be pursued — the device requires a DSN + registration
 token handshake with Ayla's cloud to complete WiFi setup, which will not succeed for an
 orphaned product line.
+
+## Confirmed: Real Range Is 0–10, Not 0–100
+
+Sleep volume and light level were originally documented as `0x00`–`0x64`
+(0–100%) purely by inference from the decompiled app's naming and the
+single-byte shape it shared with confirmed characteristics like the
+Status flags — the same "confirmed" bar every other entry here uses when
+it's traced to construction code but not yet live-tested. Live testing
+(2026-09-18) against a physical unit proved that inference wrong:
+
+- Both characteristics' actual GATT properties are `['notify', 'read',
+  'write']` — full support for with-response writes, ruling out a
+  write-mode mismatch.
+- A with-response write above a device-enforced ceiling gets rejected
+  with a GATT Application Error (ATT error code `0x80`) — a real
+  firmware-side range check, not a permissions or state issue.
+- Binary-searching that ceiling (`tools/gatt_probe.py`) converged
+  cleanly on **10** for both characteristics independently: `10` is
+  accepted, `11` is rejected.
+- `write-without-response` is not a reliable way to probe this: it
+  reports success locally the instant the packet is queued, with no
+  ATT-level confirmation, so the firmware silently dropping an
+  out-of-range value under that write mode looks identical to it being
+  accepted. Only `with-response` results are trustworthy here.
+
+So both are 11-step (`0`–`10`) level controls, not percentages. This also
+means "Relax volume"'s `0x00`–`0x64` pattern-match (based on sleep
+volume's original, since-disproven shape) is now doubly unverified —
+don't assume `0`–`10` there either without the same live test.
 
 ## Known Vendor Bug: Page Volume UUID
 

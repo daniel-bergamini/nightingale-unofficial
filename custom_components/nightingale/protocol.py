@@ -36,11 +36,18 @@ SOUND_MUTE_UUID = "74ba593d-506d-435e-becf-dc84069f24f8"
 # Sound
 SOUND_MODE_UUID = "1eb5c56d-5970-4294-9208-f16d66c396ef"
 SLEEP_VOLUME_UUID = "6dd68afc-9d26-4e67-95cb-c56c784360e7"
+# Live-tested (binary search on a physical unit): the device rejects any
+# with-response write above 10 with GATT Application Error 0x80. This is
+# an 11-step level (0-10), NOT a 0-100 percentage as originally inferred
+# from the decompiled app's naming/shape alone -- see PROTOCOL.md.
+SLEEP_VOLUME_MAX = 10
 SOUND_AUTO_ON_UUID = "11104650-14be-436b-a900-b72763c3be82"
 SOUND_AUTO_OFF_UUID = "5e6379e1-bd5b-44a2-ac16-74f845d6c388"
 
 # Light
 LIGHT_LEVEL_UUID = "adfa5e07-ebe3-4362-ae05-b63cc5aad5b1"
+# Same live-tested 0-10 ceiling as SLEEP_VOLUME_MAX, confirmed independently.
+LIGHT_LEVEL_MAX = 10
 LIGHT_COLOR_UUID = "4bf0b1b1-aadc-47aa-b5fb-c7f9affa2462"
 LIGHT_AUTO_ON_UUID = "0eef9fab-7878-4e33-9201-f9029a342530"
 LIGHT_AUTO_OFF_UUID = "36d5794c-091d-4e3e-8146-af0477e240a7"
@@ -75,7 +82,11 @@ FLASH_INDICATOR_UUID = "370ffb49-7626-4531-8b22-dbdeb359a304"
 LEGACY_ON_OFF_UUID = "c7d62e9d-c352-43b5-a00a-939254cfb3ca"  # not wired to anything in the app; do not use
 
 UNVERIFIED_NOTES = {
-    RELAX_VOLUME_UUID: "pattern-matched to sleep volume (0-100 percent), not traced/tested",
+    RELAX_VOLUME_UUID: (
+        "pattern-matched to sleep volume's *original* assumed 0-100 shape, "
+        "which live testing then proved wrong (real ceiling is 0-10) -- "
+        "don't trust 0-100 here either without the same live verification"
+    ),
     VOLUME_BALANCE_UUID: "format guessed as signed integer L/R skew, not traced/tested",
     SLEEP_SOUND_TRACK_UUID: "integer index, track list not enumerated",
     RELAX_SOUND_TRACK_UUID: "integer index, track list not enumerated",
@@ -115,15 +126,22 @@ def decode_bool(data: bytes) -> bool:
     return data[0] != 0x00
 
 
-def encode_percent(value: int) -> bytes:
-    """Encode a 1-byte 0-100 percentage (volume, light level)."""
-    if not 0 <= value <= 100:
-        raise ValueError(f"percent value out of range 0-100: {value}")
+def encode_level(value: int, max_value: int) -> bytes:
+    """Encode a 1-byte level in 0..max_value.
+
+    `max_value` is the device's actual live-tested ceiling for this
+    specific characteristic (e.g. SLEEP_VOLUME_MAX), not necessarily 100
+    -- see the module-level comments by each *_MAX constant. It's a
+    required argument rather than a default specifically so a call site
+    can't silently assume 100 the way protocol.py itself once did.
+    """
+    if not 0 <= value <= max_value:
+        raise ValueError(f"value out of range 0-{max_value}: {value}")
     return bytes([value])
 
 
-def decode_percent(data: bytes) -> int:
-    """Decode a 1-byte 0-100 percentage."""
+def decode_level(data: bytes) -> int:
+    """Decode a 1-byte level. Valid range depends on the characteristic."""
     return data[0]
 
 

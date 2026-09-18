@@ -5,7 +5,7 @@ Protocol details (UUIDs, byte formats, what's confirmed vs. unverified) live in 
 
 ## Status
 
-Implemented: power switches (Sound, Light) and percent sliders (Sleep Volume, Light Level), all reflecting live device state via BLE notify where the characteristic supports it, rather than assuming the last command sent.
+Implemented: power switches (Sound, Light) and level sliders (Sleep Volume, Light Level — both 0–10, an 11-step scale confirmed by live testing, not a 0–100 percentage), all reflecting live device state via BLE notify where the characteristic supports it, rather than assuming the last command sent.
 
 Not yet implemented: sound mode, light color (planned as `select` entities — the confirmed characteristics are already in `protocol.py`). Several other characteristics are unverified and intentionally not wired to any entity yet — see PROTOCOL.md.
 
