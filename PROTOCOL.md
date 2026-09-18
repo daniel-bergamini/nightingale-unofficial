@@ -41,9 +41,10 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 | Name | UUID | Format |
 |---|---|---|
 | Sound mode | `1eb5c56d-5970-4294-9208-f16d66c396ef` | 1 byte, enum ordinal — `0x00` = Sound Blanket, `0x01` = Nature Sound |
-| Sleep volume | `6dd68afc-9d26-4e67-95cb-c56c784360e7` | 1 byte, `0x00`–`0x0A` (0–10, an 11-step level — **not** 0–100%; see "Confirmed: Real Range Is 0–10" below). Write succeeds; **live A/B tested and found to have no audible effect** on playback — real function unknown. |
-| Relax volume | `bb23ae19-b2f0-46f4-930d-d89047d92c06` | 1 byte, `0x00`–`0x0A` assumed (0–10, carried over from sleep volume/light level's independently-binary-searched ceiling, not separately re-verified). **Live A/B tested and confirmed to audibly control live playback** — despite the name, this is the volume control that actually does something right now. |
-| Page volume | ~~`f2e85c5e6-97a4-4c3a-9742-5278bf3881ec`~~ — **invalid, unusable** | 1 byte, `0x00`–`0x64` (unverified) |
+| Sleep volume | `6dd68afc-9d26-4e67-95cb-c56c784360e7` | 1 byte, `0x00`–`0x0A` (0–10, an 11-step level — **not** 0–100%; see "Confirmed: Real Range Is 0–10" below). Only audible while Sound Mode is Sound Blanket — see "Confirmed: Sound Mode Selects Which Volume Profile Is Live" below. |
+| Relax volume | `bb23ae19-b2f0-46f4-930d-d89047d92c06` | 1 byte, `0x00`–`0x0A` assumed (0–10, carried over from sleep volume/light level's independently-binary-searched ceiling, not separately re-verified). Only audible while Sound Mode is Nature Sound. |
+| Page sound (test tone trigger) | `6500a2cd-6b0d-494a-af32-878b5bfa45cd` | Big-endian 16-bit `soundIndex`, same shape as the Sleep/Relax track characteristics (unverified format/value). One-shot device-setup test-tone trigger, not an ongoing mode — see "Known Vendor Bug: Page Volume UUID (Recovered, Not a Dead End)" below |
+| Page volume (test tone) | ~~`f2e85c5e6-97a4-4c3a-9742-5278bf3881ec`~~ (typo in `NightingaleGatt.java`) → real UUID `2e85c5e6-97a4-4c3a-9742-5278bf3881ec` (from `BleManager.java`) | Format unverified. Recovered, not unusable — see "Known Vendor Bug" below |
 | Volume balance (L/R) | `c32f5045-d621-4c9e-8f9b-557b5a5d65cd` | Integer, likely signed for L/R skew (unverified) |
 | Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | **Confirmed**: big-endian 16-bit `soundIndex`, same format as Relax sound track — see `BEDROOM_BLANKETS` in `protocol.py` and "Confirmed: Bedroom Blanket Ids" below |
 | Relax sound track | `0e4fa979-6e76-45f0-8887-762ee399121c` | **Confirmed**: big-endian 16-bit `soundIndex` — see `NATURE_SOUND_TRACKS` in `protocol.py` and "Confirmed: Nature Sound Track Is a Big-Endian soundIndex" below |
@@ -244,10 +245,11 @@ blanketIndex = roomStyleIndex + <offset for roomTypeIndex>;
 
 3 styles × 5 types = **15 values** (matching the "15 sound blankets"
 marketing claim exactly): `110, 115, 120, 125, 130, 210, 215, 220, 225,
-230, 310, 315, 320, 325, 330`. The Hospital (`+30`) offset wasn't
-directly visible in the decompiled output used to trace this (cut off
-mid-paste) but is a confident inference from the other four offsets'
-clean `+5` progression.
+230, 310, 315, 320, 325, 330`. `Blanket.getAllBlankets()` confirms this
+set directly with three explicit loops (`110..130`, `210..230`,
+`310..330`, all step `5`), so all 15 — including Hospital's `+30`,
+initially inferred from pattern before a local decompiled source copy
+let this get checked directly — are now source-confirmed, not guessed.
 
 `1280` (Sleep sound track's restored-but-dead original value) isn't in
 this list — so the write path was never broken, there was simply
@@ -259,7 +261,7 @@ the name). Wired up as the "Sleep Sound Track" select entity;
 `tools/init_state.py` now writes a real value (`110`, Adult Bedroom
 Blanket/Absorptive) instead of restoring the non-functional `1280`.
 
-## Known Vendor Bug: Page Volume UUID
+## Known Vendor Bug: Page Volume UUID (Recovered, Not a Dead End)
 
 `ngVolumePageUUID` in `NightingaleGatt.java` (line 55) is declared as:
 
@@ -267,14 +269,39 @@ Blanket/Absorptive) instead of restoring the non-functional `1280`.
 public static final UUID ngVolumePageUUID = UUID.fromString("f2e85c5e6-97a4-4c3a-9742-5278bf3881ec");
 ```
 
-That string has 9 hex digits in its first group instead of 8 — not a valid
-UUID. `UUID.fromString()` throws `IllegalArgumentException` on it, so any
-code path that touches this field is dead: it would have crashed the
-vendor's own app immediately if it were ever actually invoked. This isn't
-a transcription error in this repo — it's a genuine bug in the shipped
-app, confirmed against the decompiled source. Treat "Page volume" as
-unimplementable until/unless the correct UUID can be recovered some other
-way (e.g. a GATT services dump directly off a physical unit).
+That string has 9 hex digits in its first group instead of 8 — not a
+valid UUID; `UUID.fromString()` throws `IllegalArgumentException` on it.
+That part still stands as a genuine vendor bug in `NightingaleGatt.java`.
+
+**But** with a local decompiled source copy to search further, a second,
+independent declaration of the same conceptual constant turned up in
+`bluerocket/cgm/domain/BleManager.java` (line 129), correctly formed:
+
+```java
+private static final UUID ngVolumePageUUID = UUID.fromString("2e85c5e6-97a4-4c3a-9742-5278bf3881ec");
+```
+
+Same value, just missing the stray leading `f` — so the real UUID *is*
+recoverable after all, contrary to the original "unimplementable" call
+in this section. Whether the shipped app itself ever worked here is a
+separate question: the runtime device class, `LeNightingaleDevice.java`,
+references `NightingaleGatt.ngVolumePageUUID` (the broken one), not
+`BleManager`'s correct copy, so the live app likely hit this same bug in
+production. `BleManager.java` appears to be a separate/older Bluetooth
+manager not on that path.
+
+There's also a sibling UUID this repo never had at all: `ngSoundPageUUID
+= 6500a2cd-6b0d-494a-af32-878b5bfa45cd`, valid and unbroken. Together,
+`ngSoundPageUUID`/`ngVolumePageUUID` aren't a third ongoing listening
+mode alongside Sleep/Relax — `SoundTestGattCallback.java`'s handling
+(`"Sound Played"` / `"Volume Updated"` status messages, used from
+`DeviceSetupTestFragmentVF`) confirms this is a **one-shot test-tone
+pair used during device setup/verification**, not part of normal
+operation. Not worth wiring into a persistent HA entity even now that
+the UUID is known — but worth correcting the record: this wasn't a dead
+end, and the lesson (a bug in one file doesn't mean the same constant is
+wrong everywhere it's declared) is worth remembering for anything else
+found "broken" here in the future.
 
 ## Confirmed vs. Unverified
 

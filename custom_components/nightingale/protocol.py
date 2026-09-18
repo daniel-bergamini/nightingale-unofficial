@@ -73,14 +73,13 @@ NATURE_SOUND_TRACKS: dict[str, int] = {
 # (Absorptive=100, Neutral=200, Reflective=300) + roomType offset
 # (Bedroom=+10, Kids=+15, Snoring=+20, Tinnitus=+25, Hospital=+30) --
 # 3x5 = 15 values, matching the "15 sound blankets" marketing claim
-# exactly. The Hospital (+30) offset wasn't directly visible in the
-# decompiled output (cut off mid-paste) but is a confident inference
-# from the clean +5 arithmetic progression of the other four. This
-# fully explains why Sleep sound track never played anything: its
-# recovered/restored value, b'\x05\x00' = 0x0500 = 1280 big-endian,
-# was never a valid blanket id in the first place -- 1280 isn't in
-# this table, so there was nothing wrong with the write path, just
-# nothing valid to select.
+# exactly. All 15 are directly confirmed by Blanket.getAllBlankets()'s
+# three explicit loops (110..130, 210..230, 310..330, step 5), not just
+# arithmetic inference. This fully explains why Sleep sound track never
+# played anything: its recovered/restored value, b'\x05\x00' = 0x0500 =
+# 1280 big-endian, was never a valid blanket id in the first place --
+# 1280 isn't in this table, so there was nothing wrong with the write
+# path, just nothing valid to select.
 SLEEP_SOUND_TRACK_UUID = "a54d9906-4298-4656-9bd3-7095e87365d6"
 BEDROOM_BLANKETS: dict[str, int] = {
     "Adult Bedroom Blanket (Absorptive)": 110,
@@ -121,13 +120,19 @@ LOCATION_NAME_UUID = "37c4cabf-3f32-40ef-8ee3-92db35671faa"
 # to reference the UUID once confirmed.
 # ---------------------------------------------------------------------------
 
-# PAGE_VOLUME_UUID intentionally omitted: ngVolumePageUUID in the
-# decompiled NightingaleGatt.java is itself
-# UUID.fromString("f2e85c5e6-97a4-4c3a-9742-5278bf3881ec") — 9 hex digits
-# in the first group, not a valid UUID. This is a genuine vendor bug (that
-# call would throw IllegalArgumentException), not a transcription error,
-# so this characteristic is unusable and unimplementable as shipped. See
-# PROTOCOL.md "Known Vendor Bug: Page Volume UUID".
+# NightingaleGatt.java's ngVolumePageUUID is a genuine vendor typo
+# (UUID.fromString("f2e85c5e6-...") -- 9 hex digits, invalid), but a
+# second, correctly-formed declaration of the same constant exists in
+# BleManager.java: "2e85c5e6-97a4-4c3a-9742-5278bf3881ec" (used here,
+# not the broken one). Paired with PAGE_SOUND_UUID, these are a one-shot
+# test-tone pair used during device setup/verification (see
+# SoundTestGattCallback.java's "Sound Played"/"Volume Updated" status
+# messages), not an ongoing listening mode like Sleep/Relax -- not worth
+# wiring into a persistent HA entity even though the UUID is now known.
+# See PROTOCOL.md "Known Vendor Bug: Page Volume UUID (Recovered, Not a
+# Dead End)".
+PAGE_SOUND_UUID = "6500a2cd-6b0d-494a-af32-878b5bfa45cd"
+PAGE_VOLUME_UUID = "2e85c5e6-97a4-4c3a-9742-5278bf3881ec"
 VOLUME_BALANCE_UUID = "c32f5045-d621-4c9e-8f9b-557b5a5d65cd"
 SOUND_SCHEDULED_UUID = "86dcd724-031d-4ebe-a2e1-912670a06c3c"
 LIGHT_SCHEDULED_UUID = "8ae4953e-0db8-11e6-a148-3e1d05defe78"
@@ -137,6 +142,8 @@ FLASH_INDICATOR_UUID = "370ffb49-7626-4531-8b22-dbdeb359a304"
 LEGACY_ON_OFF_UUID = "c7d62e9d-c352-43b5-a00a-939254cfb3ca"  # not wired to anything in the app; do not use
 
 UNVERIFIED_NOTES = {
+    PAGE_SOUND_UUID: "one-shot device-setup test-tone trigger, not an ongoing mode -- not live-tested, not a candidate for a regular entity",
+    PAGE_VOLUME_UUID: "volume for the same test-tone pair; likely same 16-bit soundIndex or 0-10 level format as other volume/track characteristics, not confirmed",
     VOLUME_BALANCE_UUID: "format guessed as signed integer L/R skew, not traced/tested",
     SOUND_SCHEDULED_UUID: "guessed 0x00/0x01 enable flag, not traced/tested",
     LIGHT_SCHEDULED_UUID: "guessed 0x00/0x01 enable flag, not traced/tested",
