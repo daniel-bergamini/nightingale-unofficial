@@ -18,6 +18,17 @@ index doesn't work." This version sets the matching Sound Mode and an
 audible volume for each profile before testing its track indices, and
 restores everything (mode, both volumes, both track values) afterward.
 
+IMPORTANT: that restore writes back the same bytes it read before the
+test started, but live testing found this isn't always enough to
+actually restore the original *sound* -- a run that cycled through
+Relax sound track indices left the unit playing something other than
+its original crickets/bird loop even after writing that original byte
+back, because the track selection apparently lives in volatile
+state that a byte write-back doesn't fully reset. A full power cycle
+(unplug, wait ~10s, plug back in) fixed it. **Power-cycle the unit
+after running this script, every time** -- don't rely on the
+automatic restore alone.
+
 Run this directly against a unit -- NOT through Home Assistant or an
 ESPHome proxy. It opens its own BLE connection; disable or reload-off
 the Nightingale config entry in HA first, or this will just fail to
@@ -144,6 +155,14 @@ async def main(address: str, max_index: int) -> None:
                 print("  (no data)")
             for index, description in log.items():
                 print(f"  {index}: {description}")
+
+        print(
+            "\nPower-cycle the unit now (unplug ~10s, plug back in). The "
+            "automatic restore above writes back the same bytes read before "
+            "this test, but that isn't always enough to restore the actual "
+            "original sound -- track selection appears to hold volatile "
+            "state a byte write-back doesn't fully reset."
+        )
 
 
 if __name__ == "__main__":

@@ -144,6 +144,26 @@ audible effect while Sound Mode is set to Sound Blanket, and Relax
 Volume only while it's set to Nature Sound. Both stay as separate
 entities under their full vendor names.
 
+## Caution: Sound Track Selection May Hold Volatile State
+
+While probing the still-unverified sleep/relax sound-track
+characteristics (`tools/track_probe.py`), cycling `RELAX_SOUND_TRACK_UUID`
+through several index values and then writing back the exact byte read
+before the test started did **not** restore the original audio —
+the unit kept playing something other than its usual crickets/bird
+loop. A full power cycle (unplug, wait ~10s, plug back in) did restore
+it. This suggests the "current track" this characteristic reports isn't
+a simple stable content selector that round-trips cleanly through
+read-then-write-back; it may be an index into some runtime/volatile
+state that a byte write-back doesn't fully reset.
+
+Practical implication: writing to these track characteristics during
+testing isn't reliably undone by writing the original value back.
+Power-cycle the physical unit after testing them, every time, rather
+than trusting the automatic restore alone. Nothing suggests this is
+destructive or persistent — a power cycle has fixed it every time so
+far — but it's a real caveat for anyone probing these further.
+
 ## Known Vendor Bug: Page Volume UUID
 
 `ngVolumePageUUID` in `NightingaleGatt.java` (line 55) is declared as:
