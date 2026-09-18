@@ -9,9 +9,14 @@ that's a sign the wire format isn't a single byte after all), pausing
 for you to listen and describe what's playing, to build up a real track
 list and find out whether/where a valid index range ends.
 
-Sound should already be on and audible (with Relax Volume above 0 --
-that's the confirmed live volume control, not Sleep Volume; see
-PROTOCOL.md) before you disable the HA integration and run this.
+Each profile only produces sound when its own volume is nonzero *and*
+Sound Mode is actually set to that profile (Sleep Volume is live only
+under Sound Blanket, Relax Volume only under Nature Sound -- see
+PROTOCOL.md). A first version of this script skipped that setup, so a
+"silent" result may have just meant "wrong mode/volume," not "this
+index doesn't work." This version sets the matching Sound Mode and an
+audible volume for each profile before testing its track indices, and
+restores everything (mode, both volumes, both track values) afterward.
 
 Run this directly against a unit -- NOT through Home Assistant or an
 ESPHome proxy. It opens its own BLE connection; disable or reload-off
@@ -31,12 +36,21 @@ import sys
 from bleak import BleakClient
 
 SOUND_STATUS_UUID = "cc339aad-1847-42ed-a606-3e0a9b3bfca5"
+SOUND_MODE_UUID = "1eb5c56d-5970-4294-9208-f16d66c396ef"
+SLEEP_VOLUME_UUID = "6dd68afc-9d26-4e67-95cb-c56c784360e7"
+RELAX_VOLUME_UUID = "bb23ae19-b2f0-46f4-930d-d89047d92c06"
 SLEEP_SOUND_TRACK_UUID = "a54d9906-4298-4656-9bd3-7095e87365d6"
 RELAX_SOUND_TRACK_UUID = "0e4fa979-6e76-45f0-8887-762ee399121c"
 
+SOUND_BLANKET = 0x00
+NATURE_SOUND = 0x01
+
+AUDIBLE_VOLUME = 8  # confirmed 0-10 range; loud but not maxed out
+
+# name -> (track uuid, required sound mode, matching volume uuid)
 TRACK_CHARACTERISTICS = {
-    "Sleep sound track": SLEEP_SOUND_TRACK_UUID,
-    "Relax sound track": RELAX_SOUND_TRACK_UUID,
+    "Sleep sound track": (SLEEP_SOUND_TRACK_UUID, SOUND_BLANKET, SLEEP_VOLUME_UUID),
+    "Relax sound track": (RELAX_SOUND_TRACK_UUID, NATURE_SOUND, RELAX_VOLUME_UUID),
 }
 
 DEFAULT_MAX_INDEX = 9
@@ -51,20 +65,31 @@ def dump_properties(client: BleakClient, name: str, uuid: str) -> None:
 
 
 async def probe_track(
-    client: BleakClient, name: str, uuid: str, max_index: int
+    client: BleakClient,
+    name: str,
+    track_uuid: str,
+    required_mode: int,
+    volume_uuid: str,
+    max_index: int,
 ) -> dict[int, str]:
-    print(f"\n=== {name} ({uuid}) ===")
+    print(f"\n=== {name} ({track_uuid}) ===")
     try:
-        original = bytes(await client.read_gatt_char(uuid))
+        original_track = bytes(await client.read_gatt_char(track_uuid))
+        original_mode = bytes(await client.read_gatt_char(SOUND_MODE_UUID))
+        original_volume = bytes(await client.read_gatt_char(volume_uuid))
     except Exception as exc:  # noqa: BLE001
-        print(f"could not read current value: {exc!r}")
+        print(f"could not read current state: {exc!r}")
         return {}
-    print(f"current raw value: {original!r}")
+    print(f"current raw track value: {original_track!r}")
+
+    await client.write_gatt_char(SOUND_MODE_UUID, bytes([required_mode]), response=True)
+    await client.write_gatt_char(volume_uuid, bytes([AUDIBLE_VOLUME]), response=True)
+    print(f"set Sound Mode to {required_mode} and {name.split()[0]} volume to {AUDIBLE_VOLUME} for this test")
 
     log: dict[int, str] = {}
     for index in range(max_index + 1):
         try:
-            await client.write_gatt_char(uuid, bytes([index]), response=True)
+            await client.write_gatt_char(track_uuid, bytes([index]), response=True)
         except Exception as exc:  # noqa: BLE001
             print(
                 f"index {index}: write rejected ({exc!r}) -- stopping, "
@@ -78,11 +103,16 @@ async def probe_track(
         ).strip()
         log[index] = description or "(no description given)"
 
-    try:
-        await client.write_gatt_char(uuid, original, response=True)
-        print(f"restored {name} to {original!r}")
-    except Exception as exc:  # noqa: BLE001
-        print(f"could not restore {name} to {original!r}: {exc!r}")
+    for uuid, original in (
+        (track_uuid, original_track),
+        (SOUND_MODE_UUID, original_mode),
+        (volume_uuid, original_volume),
+    ):
+        try:
+            await client.write_gatt_char(uuid, original, response=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"could not restore {uuid} to {original!r}: {exc!r}")
+    print(f"restored {name}, Sound Mode, and its volume to their original values")
 
     return log
 
@@ -98,12 +128,14 @@ async def main(address: str, max_index: int) -> None:
         except Exception as exc:  # noqa: BLE001
             print(f"could not read sound status: {exc!r}")
 
-        for name, uuid in TRACK_CHARACTERISTICS.items():
-            dump_properties(client, name, uuid)
+        for name, (track_uuid, _mode, _vol) in TRACK_CHARACTERISTICS.items():
+            dump_properties(client, name, track_uuid)
 
         results: dict[str, dict[int, str]] = {}
-        for name, uuid in TRACK_CHARACTERISTICS.items():
-            results[name] = await probe_track(client, name, uuid, max_index)
+        for name, (track_uuid, mode, vol_uuid) in TRACK_CHARACTERISTICS.items():
+            results[name] = await probe_track(
+                client, name, track_uuid, mode, vol_uuid, max_index
+            )
 
         print("\n=== summary ===")
         for name, log in results.items():
