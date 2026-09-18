@@ -41,10 +41,20 @@ async def async_setup_entry(
     async_add_entities(
         [
             NightingalePowerSwitch(
-                device, entry.title, SOUND_STATUS_UUID, "sound_power", "Sound"
+                device,
+                entry.title,
+                SOUND_STATUS_UUID,
+                "sound_power",
+                "Sound",
+                "mdi:volume-high",
             ),
             NightingalePowerSwitch(
-                device, entry.title, LIGHT_STATUS_UUID, "light_power", "Light"
+                device,
+                entry.title,
+                LIGHT_STATUS_UUID,
+                "light_power",
+                "Light",
+                "mdi:lightbulb",
             ),
         ]
     )
@@ -63,11 +73,13 @@ class NightingalePowerSwitch(SwitchEntity):
         char_uuid: str,
         key: str,
         name: str,
+        icon: str,
     ) -> None:
         self._device = device
         self._char_uuid = char_uuid
         self._attr_name = name
         self._attr_unique_id = f"{device.address}_{key}"
+        self._attr_icon = icon
         self._attr_available = False
         self._attr_device_info = DeviceInfo(
             connections={(dr.CONNECTION_BLUETOOTH, device.address)},
