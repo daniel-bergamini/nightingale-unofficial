@@ -4,26 +4,28 @@
 Built after track_probe.py corrupted Relax sound track's live value by
 writing 1-byte test values into what turned out to be a 2-byte
 characteristic -- the true original, recovered from an earlier run's
-logged "current raw value" line, was b'\\x01\\xfe'. See PROTOCOL.md.
+logged "current raw value" line, was b'\\x01\\xfe'. A later read-only
+run also confirmed Sleep sound track's original value, b'\\x05\\x00'.
+See PROTOCOL.md.
 
 Sets:
 - Sound status: on
 - Light status: on
 - Sound mode: Nature Sound (required for Relax volume/track to be the
   *live* profile -- see PROTOCOL.md; without this, the values below
-  get written successfully but silently do nothing audible)
+  get written successfully but silently do nothing audible. Sleep
+  sound track is still set below regardless, so it's parked correctly
+  for whenever you switch modes, even though it won't be audible until
+  Sound Mode is Sound Blanket)
 - Sleep volume, Relax volume, Light level: 5 (middle of the confirmed
   0-10 range)
-- Relax sound track: the recovered original raw value
+- Sleep sound track, Relax sound track: their recovered original raw
+  values
 
 Also useful going forward as a clean, fully-known starting point before
 any exploratory testing, rather than accumulating drift across many
 separate manual test sessions -- which is what led to the track-index
 confusion this script exists to fix in the first place.
-
-Deliberately does NOT touch Sleep sound track: we never captured a
-known-good raw value for it before testing began, and guessing one
-risks repeating the exact mistake that broke Relax sound track.
 
 Run this directly against a unit -- NOT through Home Assistant or an
 ESPHome proxy. Disable or reload-off the Nightingale config entry in HA
@@ -47,10 +49,12 @@ SOUND_MODE_UUID = "1eb5c56d-5970-4294-9208-f16d66c396ef"
 SLEEP_VOLUME_UUID = "6dd68afc-9d26-4e67-95cb-c56c784360e7"
 RELAX_VOLUME_UUID = "bb23ae19-b2f0-46f4-930d-d89047d92c06"
 LIGHT_LEVEL_UUID = "adfa5e07-ebe3-4362-ae05-b63cc5aad5b1"
+SLEEP_SOUND_TRACK_UUID = "a54d9906-4298-4656-9bd3-7095e87365d6"
 RELAX_SOUND_TRACK_UUID = "0e4fa979-6e76-45f0-8887-762ee399121c"
 
 NATURE_SOUND = 0x01
 MIDDLE_VOLUME = 5
+RECOVERED_SLEEP_TRACK = bytes.fromhex("0500")
 RECOVERED_RELAX_TRACK = bytes.fromhex("01fe")
 
 # (label, characteristic uuid, bytes to write)
@@ -61,6 +65,7 @@ STEPS: list[tuple[str, str, bytes]] = [
     ("Sleep volume", SLEEP_VOLUME_UUID, bytes([MIDDLE_VOLUME])),
     ("Relax volume", RELAX_VOLUME_UUID, bytes([MIDDLE_VOLUME])),
     ("Light level", LIGHT_LEVEL_UUID, bytes([MIDDLE_VOLUME])),
+    ("Sleep sound track", SLEEP_SOUND_TRACK_UUID, RECOVERED_SLEEP_TRACK),
     ("Relax sound track", RELAX_SOUND_TRACK_UUID, RECOVERED_RELAX_TRACK),
 ]
 

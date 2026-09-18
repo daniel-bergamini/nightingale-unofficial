@@ -3,21 +3,21 @@
 
 CONFIRMED INCIDENT: an earlier version of this script wrote single-byte
 index values (0x00-0x09) into RELAX_SOUND_TRACK_UUID and lost the
-original "crickets and tree frog" audio -- because the real value is
-at least 2 bytes (b'\\x01\\xfe'), not 1. A recovered-value write via
+original "crickets and tree frog" audio -- because the real value is 2
+bytes (b'\\x01\\xfe'), not 1. A recovered-value write via
 tools/init_state.py fixed it. See PROTOCOL.md, "Relax Sound Track Is
-(At Least) 2 Bytes". Sleep sound track's byte width was never confirmed
-either, and unlike Relax, we have no known-good original value logged
-for it -- if it's also wider than 1 byte, the same single-byte sweep
-below could corrupt it with no recovery path.
+(At Least) 2 Bytes". Both characteristics are now confirmed 2 bytes on
+this unit (sleep b'\\x05\\x00', relax b'\\x01\\xfe').
 
 Because of that, this script is READ-ONLY by default: it just prints
 each characteristic's GATT properties and current raw value, so you can
-see the real byte width before writing anything. Pass --write to run
-the old single-byte 0..max_index sweep (setting matching Sound Mode and
+confirm the real byte width before writing anything. Pass --write to
+sweep byte 0 through max_index while holding byte 1 fixed at each
+characteristic's real original value (setting matching Sound Mode and
 volume first, restoring everything after, per the two prior fixes to
-this script) -- know going in that it assumes 1 byte and has already
-corrupted live state once because of that assumption.
+this script) -- but know that byte-0-is-the-index is a guess based on
+the two known values, not a confirmed format, and the restore write is
+not confirmed sufficient by itself (see PROTOCOL.md).
 
 Run this directly against a unit -- NOT through Home Assistant or an
 ESPHome proxy. It opens its own BLE connection; disable or reload-off
@@ -84,23 +84,39 @@ async def probe_track(
         return {}
     print(f"current raw track value: {original_track!r}")
 
+    if len(original_track) != 2:
+        print(
+            f"{name}: original value is {len(original_track)} byte(s), not "
+            "the 2 confirmed for sleep/relax sound track on this unit -- "
+            "aborting this sweep rather than guessing an unknown format"
+        )
+        return {}
+    fixed_byte = original_track[1]
+    print(
+        f"holding byte 1 fixed at {fixed_byte:#04x} (from the original "
+        "value) and sweeping byte 0 -- this ASSUMES byte 0 is the "
+        "meaningful index and byte 1 is something else. That split is a "
+        "guess based on the two known values (sleep b'\\x05\\x00', relax "
+        "b'\\x01\\xfe'), not a confirmed format."
+    )
+
     await client.write_gatt_char(SOUND_MODE_UUID, bytes([required_mode]), response=True)
     await client.write_gatt_char(volume_uuid, bytes([AUDIBLE_VOLUME]), response=True)
     print(f"set Sound Mode to {required_mode} and {name.split()[0]} volume to {AUDIBLE_VOLUME} for this test")
 
     log: dict[int, str] = {}
     for index in range(max_index + 1):
+        candidate = bytes([index, fixed_byte])
         try:
-            await client.write_gatt_char(track_uuid, bytes([index]), response=True)
+            await client.write_gatt_char(track_uuid, candidate, response=True)
         except Exception as exc:  # noqa: BLE001
             print(
-                f"index {index}: write rejected ({exc!r}) -- stopping, "
-                "likely past the valid range (or the wire format isn't "
-                "a single byte, if this happened at index 0)"
+                f"byte0={index} (full value {candidate!r}): write rejected "
+                f"({exc!r}) -- stopping, likely past the valid range"
             )
             break
         description = input(
-            f"index {index} written. Listen, then describe what's playing "
+            f"wrote {candidate!r}. Listen, then describe what's playing "
             f"(or 'same', 'silence', or Enter to skip): "
         ).strip()
         log[index] = description or "(no description given)"
@@ -135,9 +151,11 @@ async def main(address: str, do_write: bool, max_index: int) -> None:
             return
 
         print(
-            "\n--- WRITE MODE: about to write single-byte values 0.."
-            f"{max_index} -- this already corrupted Relax sound track once "
-            "because the real value is wider than 1 byte. Ctrl+C now to abort. ---"
+            "\n--- WRITE MODE: about to sweep byte 0 through "
+            f"{max_index} while holding byte 1 fixed at each "
+            "characteristic's real original value (both are confirmed 2 "
+            "bytes now). The byte-0-is-the-index split is still a guess, "
+            "not confirmed. Ctrl+C now to abort. ---"
         )
 
         try:

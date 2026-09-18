@@ -174,9 +174,16 @@ turned out to be wrong for this one.
 `tools/init_state.py` (which also sets Sound/Light on, Sound Mode to
 Nature Sound, and all volumes to 5) restored the original audio —
 crickets plus what's more likely a tree frog than a bird, on reflection.
-The exact 2-byte encoding is still unconfirmed (still just one known
-value, not a decoded format), but the one value that matters for
-recovery is confirmed good.
+
+A follow-up read-only check (`tools/track_probe.py`, no `--write`)
+confirmed `SLEEP_SOUND_TRACK_UUID` is also 2 bytes, original value
+`b'\x05\x00'`. So both sound-track characteristics are 2 bytes on this
+unit; `tools/init_state.py` now restores both. The exact 2-byte
+encoding is still unconfirmed — `track_probe.py`'s `--write` mode now
+sweeps byte 0 while holding byte 1 fixed at the real original value
+(guessing byte 0 is the meaningful index), rather than clobbering both
+bytes with a 1-byte write, but that split itself is still a guess, not
+a decoded format.
 
 Practical implication for anyone probing this further: don't assume
 byte width from naming or from sibling characteristics. Read and log
