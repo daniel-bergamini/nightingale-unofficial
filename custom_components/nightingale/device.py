@@ -45,6 +45,10 @@ class NightingaleDevice:
         self._connect_lock = asyncio.Lock()
         self._notify_callbacks: dict[str, list[NotifyCallback]] = {}
         self._active_notify_uuids: set[str] = set()
+        # Characteristics that raised BleakError on start_notify (e.g. no
+        # NOTIFY/INDICATE property) — skip retrying these, they can still
+        # be read/written directly, just not subscribed to.
+        self._notify_unsupported: set[str] = set()
 
     @property
     def ble_device(self) -> BLEDevice | None:
@@ -98,11 +102,22 @@ class NightingaleDevice:
     ) -> None:
         """Re-arm notify subscriptions lost on the previous disconnect."""
         for char_uuid, callbacks in self._notify_callbacks.items():
-            if not callbacks:
+            if not callbacks or char_uuid in self._notify_unsupported:
                 continue
-            await client.start_notify(
-                char_uuid, self._make_notify_handler(char_uuid)
-            )
+            try:
+                await client.start_notify(
+                    char_uuid, self._make_notify_handler(char_uuid)
+                )
+            except BleakError:
+                _LOGGER.warning(
+                    "%s: %s does not support notifications; will only "
+                    "reflect state on read/write",
+                    self.address,
+                    char_uuid,
+                    exc_info=True,
+                )
+                self._notify_unsupported.add(char_uuid)
+                continue
             self._active_notify_uuids.add(char_uuid)
 
     def _make_notify_handler(self, char_uuid: str) -> Callable[[object, bytearray], None]:
@@ -150,8 +165,23 @@ class NightingaleDevice:
         # since we appended above before calling it. Only start it here if
         # that didn't just happen, to avoid double-subscribing.
         client = await self._ensure_connected()
+        if char_uuid in self._notify_unsupported:
+            return
         if char_uuid not in self._active_notify_uuids:
-            await client.start_notify(char_uuid, self._make_notify_handler(char_uuid))
+            try:
+                await client.start_notify(
+                    char_uuid, self._make_notify_handler(char_uuid)
+                )
+            except BleakError:
+                _LOGGER.warning(
+                    "%s: %s does not support notifications; will only "
+                    "reflect state on read/write",
+                    self.address,
+                    char_uuid,
+                    exc_info=True,
+                )
+                self._notify_unsupported.add(char_uuid)
+                return
             self._active_notify_uuids.add(char_uuid)
 
     async def async_stop_notify(self, char_uuid: str, callback: NotifyCallback) -> None:

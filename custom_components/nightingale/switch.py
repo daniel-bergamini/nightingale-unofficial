@@ -77,7 +77,17 @@ class NightingalePowerSwitch(SwitchEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        await self._device.async_start_notify(self._char_uuid, self._handle_notify)
+        try:
+            await self._device.async_start_notify(self._char_uuid, self._handle_notify)
+        except (NightingaleNotFoundError, BleakError):
+            # device.py already logs unsupported-notify cases itself; this
+            # covers connection failures at setup time. Either way, fall
+            # through to a plain read rather than leaving the entity
+            # permanently stuck unavailable.
+            _LOGGER.debug(
+                "%s: could not subscribe to %s", self._device.address, self._char_uuid,
+                exc_info=True,
+            )
         await self._async_refresh_state()
 
     async def async_will_remove_from_hass(self) -> None:
@@ -92,7 +102,7 @@ class NightingalePowerSwitch(SwitchEntity):
         try:
             data = await self._device.async_read_gatt(self._char_uuid)
         except (NightingaleNotFoundError, BleakError):
-            _LOGGER.debug(
+            _LOGGER.warning(
                 "%s: could not read %s", self._device.address, self._char_uuid,
                 exc_info=True,
             )
