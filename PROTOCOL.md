@@ -165,17 +165,18 @@ characteristic that actually holds two, matching neither this
 protocol's usual single-byte convention nor the schedule
 characteristics' `[minute, hour]` pair convention exactly (format
 otherwise still unconfirmed — could be two independent bytes, or one
-16-bit value in either endianness). `PAGE_VOLUME_UUID`'s "Integer
+16-bit value in either endianness). `RELAX_SOUND_TRACK_UUID`'s "Integer
 index" description in this table never specified a width; that
 assumption (1 byte, matching every other numeric characteristic here)
 turned out to be wrong for this one.
 
-Recovery in progress: writing the recovered raw value (`01 FE`) back
-via nRF Connect directly, and via `tools/init_state.py` (which also
-resets Sound/Light on, Sound Mode to Nature Sound, and all volumes to a
-known 5) as a clean baseline to test from. Whether this fully restores
-the original audio, and what the real 2-byte format actually encodes,
-is still being confirmed as of this writing.
+**Recovered.** Writing the recovered raw value (`01 FE`) back via
+`tools/init_state.py` (which also sets Sound/Light on, Sound Mode to
+Nature Sound, and all volumes to 5) restored the original audio —
+crickets plus what's more likely a tree frog than a bird, on reflection.
+The exact 2-byte encoding is still unconfirmed (still just one known
+value, not a decoded format), but the one value that matters for
+recovery is confirmed good.
 
 Practical implication for anyone probing this further: don't assume
 byte width from naming or from sibling characteristics. Read and log
