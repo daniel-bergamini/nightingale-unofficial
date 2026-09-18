@@ -1,11 +1,12 @@
-"""Volume and light-level number entities for Nightingale.
+"""Numeric entities for Nightingale: volume/level sliders and L/R balance.
 
-All three are 11-step (0-10) level controls, not 0-100 percentages --
-despite looking like a percent based on the decompiled app's naming and
-byte shape, live testing (binary-searching the write ceiling against a
-physical unit) found the device rejects anything above 10 with GATT
-Application Error 0x80. See SLEEP_VOLUME_MAX/LIGHT_LEVEL_MAX/
-RELAX_VOLUME_MAX in protocol.py and PROTOCOL.md.
+Sleep/Relax Volume and Light Level are 11-step (0-10) level controls,
+not 0-100 percentages -- despite looking like a percent based on the
+decompiled app's naming and byte shape, live testing (binary-searching
+the write ceiling against a physical unit) found the device rejects
+anything above 10 with GATT Application Error 0x80. See
+SLEEP_VOLUME_MAX/LIGHT_LEVEL_MAX/RELAX_VOLUME_MAX in protocol.py and
+PROTOCOL.md.
 
 Sleep Volume and Relax Volume are kept as separate entities under their
 full vendor names, not collapsed into one "volume": confirmed live, the
@@ -13,6 +14,9 @@ device has two distinct sound profiles selected by Sound Mode (see
 select.py) -- Sleep Volume is the live one when Sound Mode is Sound
 Blanket, Relax Volume when it's Nature Sound. Adjusting the "wrong" one
 for the current mode is a no-op, not a bug.
+
+Volume Balance is a separate, signed -10..10 range (L/R skew), confirmed
+via decompiled construction code (LeNightingaleDevice.java's setBalance).
 
 Same read-back-don't-assume architecture as switch.py: initial read on
 setup, live notify subscription where the characteristic supports it
@@ -43,7 +47,12 @@ from .protocol import (
     RELAX_VOLUME_UUID,
     SLEEP_VOLUME_MAX,
     SLEEP_VOLUME_UUID,
+    VOLUME_BALANCE_MAX,
+    VOLUME_BALANCE_MIN,
+    VOLUME_BALANCE_UUID,
+    decode_balance,
     decode_level,
+    encode_balance,
     encode_level,
 )
 
@@ -55,7 +64,7 @@ async def async_setup_entry(
     entry: NightingaleConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Nightingale level number entities for a config entry."""
+    """Set up Nightingale numeric entities for a config entry."""
     device = entry.runtime_data
     async_add_entities(
         [
@@ -86,16 +95,16 @@ async def async_setup_entry(
                 "Light Level",
                 "mdi:brightness-percent",
             ),
+            NightingaleBalanceNumber(device, entry.title),
         ]
     )
 
 
-class NightingaleLevelNumber(NumberEntity):
-    """A 0..max_value level backed by a single-byte characteristic."""
+class _NightingaleNumberBase(NumberEntity):
+    """Shared read-back plumbing; subclasses supply the codec."""
 
     _attr_has_entity_name = True
     _attr_should_poll = False
-    _attr_native_min_value = 0
     _attr_native_step = 1
     _attr_mode = NumberMode.SLIDER
 
@@ -104,15 +113,12 @@ class NightingaleLevelNumber(NumberEntity):
         device: NightingaleDevice,
         room_name: str,
         char_uuid: str,
-        max_value: int,
         key: str,
         name: str,
         icon: str,
     ) -> None:
         self._device = device
         self._char_uuid = char_uuid
-        self._max_value = max_value
-        self._attr_native_max_value = max_value
         self._attr_name = name
         self._attr_unique_id = f"{device.address}_{key}"
         self._attr_icon = icon
@@ -123,6 +129,12 @@ class NightingaleLevelNumber(NumberEntity):
             manufacturer=MANUFACTURER,
             model=MODEL,
         )
+
+    def _decode(self, data: bytes) -> float:
+        raise NotImplementedError
+
+    def _encode(self, value: float) -> bytes:
+        raise NotImplementedError
 
     async def async_added_to_hass(self) -> None:
         try:
@@ -138,7 +150,7 @@ class NightingaleLevelNumber(NumberEntity):
         await self._device.async_stop_notify(self._char_uuid, self._handle_notify)
 
     def _handle_notify(self, data: bytes) -> None:
-        self._attr_native_value = decode_level(data)
+        self._attr_native_value = self._decode(data)
         self._attr_available = True
         self.async_write_ha_state()
 
@@ -152,12 +164,59 @@ class NightingaleLevelNumber(NumberEntity):
             )
             self._attr_available = False
         else:
-            self._attr_native_value = decode_level(data)
+            self._attr_native_value = self._decode(data)
             self._attr_available = True
         self.async_write_ha_state()
 
     async def async_set_native_value(self, value: float) -> None:
-        await self._device.async_write_gatt(
-            self._char_uuid, encode_level(round(value), self._max_value)
-        )
+        await self._device.async_write_gatt(self._char_uuid, self._encode(value))
         await self._async_refresh_state()
+
+
+class NightingaleLevelNumber(_NightingaleNumberBase):
+    """A 0..max_value level backed by a single-byte characteristic."""
+
+    _attr_native_min_value = 0
+
+    def __init__(
+        self,
+        device: NightingaleDevice,
+        room_name: str,
+        char_uuid: str,
+        max_value: int,
+        key: str,
+        name: str,
+        icon: str,
+    ) -> None:
+        super().__init__(device, room_name, char_uuid, key, name, icon)
+        self._max_value = max_value
+        self._attr_native_max_value = max_value
+
+    def _decode(self, data: bytes) -> float:
+        return decode_level(data)
+
+    def _encode(self, value: float) -> bytes:
+        return encode_level(round(value), self._max_value)
+
+
+class NightingaleBalanceNumber(_NightingaleNumberBase):
+    """L/R volume balance, signed -10..10 (VOLUME_BALANCE_UUID)."""
+
+    _attr_native_min_value = VOLUME_BALANCE_MIN
+    _attr_native_max_value = VOLUME_BALANCE_MAX
+
+    def __init__(self, device: NightingaleDevice, room_name: str) -> None:
+        super().__init__(
+            device,
+            room_name,
+            VOLUME_BALANCE_UUID,
+            "volume_balance",
+            "Volume Balance",
+            "mdi:equalizer",
+        )
+
+    def _decode(self, data: bytes) -> float:
+        return decode_balance(data)
+
+    def _encode(self, value: float) -> bytes:
+        return encode_balance(round(value))

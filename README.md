@@ -5,7 +5,7 @@ Protocol details (UUIDs, byte formats, what's confirmed vs. unverified) live in 
 
 ## Status
 
-Implemented: power switches (Sound, Light), level sliders (Sleep Volume, Relax Volume, Light Level — all 0–10, an 11-step scale confirmed by live testing, not a 0–100 percentage), and selects (Sound Mode, Light Color, Relax Sound Track — Lakeshore/Crickets/Loons/Whale Songs/Rainstorm, and Sleep Sound Track — 15 Bedroom Blanket variants, both decoded from the app's own `soundIndex` values), all reflecting live device state via BLE notify where the characteristic supports it, rather than assuming the last command sent.
+Implemented: switches (Sound, Light, Disable Physical Button, Sound Auto-Schedule, Light Auto-Schedule), number sliders (Sleep Volume, Relax Volume, Light Level — all 0–10; Volume Balance — signed -10 to 10), and selects (Sound Mode, Light Color, Relax Sound Track — Lakeshore/Crickets/Loons/Whale Songs/Rainstorm, and Sleep Sound Track — 15 Bedroom Blanket variants, both decoded from the app's own `soundIndex` values), all reflecting live device state via BLE notify where the characteristic supports it, rather than assuming the last command sent.
 
 Known quirk: this device has two distinct sound profiles, selected by the Sound Mode select — **Sleep Volume** is only live when Sound Mode is Sound Blanket, **Relax Volume** only when it's Nature Sound (confirmed via `tools/volume_ab_probe.py` plus live testing in HA). Adjusting the volume that doesn't match the current mode is a no-op, not a bug. See PROTOCOL.md for the full writeup.
 

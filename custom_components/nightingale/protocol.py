@@ -113,6 +113,22 @@ LIGHT_AUTO_OFF_UUID = "36d5794c-091d-4e3e-8146-af0477e240a7"
 ROOM_NAME_UUID = "add88f42-6127-41e7-8f0e-de054d99d91d"
 LOCATION_NAME_UUID = "37c4cabf-3f32-40ef-8ee3-92db35671faa"
 
+# Confirmed via decompiled construction code (LeNightingaleDevice.java):
+# setDisableBtn(Integer) switches on 0/1, writing a plain 1-byte flag --
+# same shape as encode_bool/decode_bool.
+DISABLE_BUTTON_UUID = "b686b17d-b0dd-4415-bb76-895745d9d5ed"
+# setSoundScheduled/setLightScheduled are called with literal 1/0
+# (SetSleepScheduleFragment.java), confirming the guessed 0x00/0x01
+# enable-flag format.
+SOUND_SCHEDULED_UUID = "86dcd724-031d-4ebe-a2e1-912670a06c3c"
+LIGHT_SCHEDULED_UUID = "8ae4953e-0db8-11e6-a148-3e1d05defe78"
+# setBalance(Integer balance): "if (balance >= -10 && balance <= 10)
+# { byte[] output = {(byte) balance.intValue()}; ...}" -- confirmed
+# signed 1-byte, -10 to +10 (L/R skew).
+VOLUME_BALANCE_UUID = "c32f5045-d621-4c9e-8f9b-557b5a5d65cd"
+VOLUME_BALANCE_MIN = -10
+VOLUME_BALANCE_MAX = 10
+
 # ---------------------------------------------------------------------------
 # Unverified characteristics — DO NOT wire into entities without live
 # confirmation (either traced to construction code, or tested against a
@@ -133,23 +149,22 @@ LOCATION_NAME_UUID = "37c4cabf-3f32-40ef-8ee3-92db35671faa"
 # Dead End)".
 PAGE_SOUND_UUID = "6500a2cd-6b0d-494a-af32-878b5bfa45cd"
 PAGE_VOLUME_UUID = "2e85c5e6-97a4-4c3a-9742-5278bf3881ec"
-VOLUME_BALANCE_UUID = "c32f5045-d621-4c9e-8f9b-557b5a5d65cd"
-SOUND_SCHEDULED_UUID = "86dcd724-031d-4ebe-a2e1-912670a06c3c"
-LIGHT_SCHEDULED_UUID = "8ae4953e-0db8-11e6-a148-3e1d05defe78"
-DISABLE_BUTTON_UUID = "b686b17d-b0dd-4415-bb76-895745d9d5ed"
+# setRamp(Integer ramp): validated as "ramp <= 360" but then written as
+# a single-byte cast, "(byte) ramp.intValue()" -- a real vendor bug,
+# the validation doesn't match the actual 1-byte wire capacity (a Java
+# byte cast wraps for anything above 127). Confirmed 1 byte, but not
+# confident enough in the real safe range to wire this into an entity.
 RAMP_UUID = "7c54068a-46a7-42c9-a318-f5d47f492028"
+# No references anywhere in the decompiled app outside its own
+# declaration -- genuinely vestigial, same as LEGACY_ON_OFF_UUID.
 FLASH_INDICATOR_UUID = "370ffb49-7626-4531-8b22-dbdeb359a304"
 LEGACY_ON_OFF_UUID = "c7d62e9d-c352-43b5-a00a-939254cfb3ca"  # not wired to anything in the app; do not use
 
 UNVERIFIED_NOTES = {
     PAGE_SOUND_UUID: "one-shot device-setup test-tone trigger, not an ongoing mode -- not live-tested, not a candidate for a regular entity",
     PAGE_VOLUME_UUID: "volume for the same test-tone pair; likely same 16-bit soundIndex or 0-10 level format as other volume/track characteristics, not confirmed",
-    VOLUME_BALANCE_UUID: "format guessed as signed integer L/R skew, not traced/tested",
-    SOUND_SCHEDULED_UUID: "guessed 0x00/0x01 enable flag, not traced/tested",
-    LIGHT_SCHEDULED_UUID: "guessed 0x00/0x01 enable flag, not traced/tested",
-    DISABLE_BUTTON_UUID: "format entirely unknown",
-    RAMP_UUID: "format entirely unknown",
-    FLASH_INDICATOR_UUID: "format entirely unknown",
+    RAMP_UUID: "confirmed 1 byte, but the app's own bounds check (<=360) doesn't match a byte's real capacity -- real safe range not confirmed, don't guess one",
+    FLASH_INDICATOR_UUID: "no references anywhere in the app outside its own declaration -- likely vestigial",
     LEGACY_ON_OFF_UUID: "not wired to any method in the decompiled app; likely vestigial, do not use as power toggle",
 }
 
@@ -198,6 +213,23 @@ def encode_level(value: int, max_value: int) -> bytes:
 def decode_level(data: bytes) -> int:
     """Decode a 1-byte level. Valid range depends on the characteristic."""
     return data[0]
+
+
+def encode_balance(value: int) -> bytes:
+    """Encode a signed 1-byte L/R balance (VOLUME_BALANCE_UUID).
+
+    Confirmed range is VOLUME_BALANCE_MIN..VOLUME_BALANCE_MAX (-10..10).
+    """
+    if not VOLUME_BALANCE_MIN <= value <= VOLUME_BALANCE_MAX:
+        raise ValueError(
+            f"balance out of range {VOLUME_BALANCE_MIN}-{VOLUME_BALANCE_MAX}: {value}"
+        )
+    return value.to_bytes(1, "big", signed=True)
+
+
+def decode_balance(data: bytes) -> int:
+    """Decode a signed 1-byte L/R balance."""
+    return int.from_bytes(data, "big", signed=True)
 
 
 def encode_sound_mode(mode: SoundMode) -> bytes:

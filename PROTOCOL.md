@@ -45,10 +45,10 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 | Relax volume | `bb23ae19-b2f0-46f4-930d-d89047d92c06` | 1 byte, `0x00`–`0x0A` assumed (0–10, carried over from sleep volume/light level's independently-binary-searched ceiling, not separately re-verified). Only audible while Sound Mode is Nature Sound. |
 | Page sound (test tone trigger) | `6500a2cd-6b0d-494a-af32-878b5bfa45cd` | Big-endian 16-bit `soundIndex`, same shape as the Sleep/Relax track characteristics (unverified format/value). One-shot device-setup test-tone trigger, not an ongoing mode — see "Known Vendor Bug: Page Volume UUID (Recovered, Not a Dead End)" below |
 | Page volume (test tone) | ~~`f2e85c5e6-97a4-4c3a-9742-5278bf3881ec`~~ (typo in `NightingaleGatt.java`) → real UUID `2e85c5e6-97a4-4c3a-9742-5278bf3881ec` (from `BleManager.java`) | Format unverified. Recovered, not unusable — see "Known Vendor Bug" below |
-| Volume balance (L/R) | `c32f5045-d621-4c9e-8f9b-557b5a5d65cd` | Integer, likely signed for L/R skew (unverified) |
+| Volume balance (L/R) | `c32f5045-d621-4c9e-8f9b-557b5a5d65cd` | **Confirmed**: signed 1 byte, `-10`–`10` — `setBalance(Integer)`: `if (balance >= -10 && balance <= 10) { byte[] output = {(byte) balance.intValue()}; ...}` (`LeNightingaleDevice.java`) |
 | Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | **Confirmed**: big-endian 16-bit `soundIndex`, same format as Relax sound track — see `BEDROOM_BLANKETS` in `protocol.py` and "Confirmed: Bedroom Blanket Ids" below |
 | Relax sound track | `0e4fa979-6e76-45f0-8887-762ee399121c` | **Confirmed**: big-endian 16-bit `soundIndex` — see `NATURE_SOUND_TRACKS` in `protocol.py` and "Confirmed: Nature Sound Track Is a Big-Endian soundIndex" below |
-| Sound scheduled (enable flag) | `86dcd724-031d-4ebe-a2e1-912670a06c3c` | Integer, likely `0x00`/`0x01` (unverified) |
+| Sound scheduled (enable flag) | `86dcd724-031d-4ebe-a2e1-912670a06c3c` | **Confirmed**: 1 byte, `0x00`/`0x01` — `setSoundScheduled(1)`/`setSoundScheduled(0)` called with literal integers (`SetSleepScheduleFragment.java`) |
 | **Sound auto-on time** ⚠️ not an immediate toggle | `11104650-14be-436b-a900-b72763c3be82` | 2 bytes: `[minute, hour]`, both plain integers, 24hr |
 | **Sound auto-off time** ⚠️ not an immediate toggle | `5e6379e1-bd5b-44a2-ac16-74f845d6c388` | 2 bytes: `[minute, hour]`, same format |
 
@@ -58,7 +58,7 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 |---|---|---|
 | Light level | `adfa5e07-ebe3-4362-ae05-b63cc5aad5b1` | 1 byte, `0x00`–`0x0A` (0–10, same 11-step level as sleep volume; see below) |
 | Light color | `4bf0b1b1-aadc-47aa-b5fb-c7f9affa2462` | 3 bytes, RGB. Confirmed: White `FF FF FF`, Green `00 FF 00`, Blue `00 00 FF`. Inferred: Red `FF 00 00` |
-| Light scheduled (enable flag) | `8ae4953e-0db8-11e6-a148-3e1d05defe78` | Integer, likely `0x00`/`0x01` (unverified) |
+| Light scheduled (enable flag) | `8ae4953e-0db8-11e6-a148-3e1d05defe78` | **Confirmed**: 1 byte, `0x00`/`0x01`, same as Sound scheduled |
 | **Light auto-on time** | `0eef9fab-7878-4e33-9201-f9029a342530` | 2 bytes: `[minute, hour]`, same schedule format as sound |
 | **Light auto-off time** | `36d5794c-091d-4e3e-8146-af0477e240a7` | 2 bytes: `[minute, hour]`, same |
 
@@ -66,11 +66,11 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 
 | Name | UUID | Format |
 |---|---|---|
-| Disable physical button | `b686b17d-b0dd-4415-bb76-895745d9d5ed` | Integer (unverified) |
+| Disable physical button | `b686b17d-b0dd-4415-bb76-895745d9d5ed` | **Confirmed**: 1 byte, `0x00`/`0x01` — `setDisableBtn(Integer)` switches on the literal values `0`/`1` (`LeNightingaleDevice.java`) |
+| Ramp (fade-in duration) | `7c54068a-46a7-42c9-a318-f5d47f492028` | **Confirmed 1 byte**, but the app's own bounds check doesn't match: `setRamp(Integer ramp)` validates `ramp <= 360` then does `(byte) ramp.intValue()` — a Java byte cast silently wraps for anything above 127. Real safe range unconfirmed; not wired to an entity |
+| Flash-when-updated indicator | `370ffb49-7626-4531-8b22-dbdeb359a304` | No references anywhere in the decompiled app outside its own declaration — likely vestigial (unverified) |
 | Room name | `add88f42-6127-41e7-8f0e-de054d99d91d` | String |
 | Location name | `37c4cabf-3f32-40ef-8ee3-92db35671faa` | String |
-| Ramp (fade-in duration) | `7c54068a-46a7-42c9-a318-f5d47f492028` | Integer (unverified) |
-| Flash-when-updated indicator | `370ffb49-7626-4531-8b22-dbdeb359a304` | Integer (unverified) |
 | On/Off (legacy?) | `c7d62e9d-c352-43b5-a00a-939254cfb3ca` | Unknown — not wired to any method in the decompiled app; likely vestigial from an earlier firmware revision. **Do not assume this is the power toggle** — use the Status characteristics above instead. |
 
 ### WiFi / Cloud Provisioning (dead weight — documented for completeness only)
@@ -302,6 +302,28 @@ the UUID is known — but worth correcting the record: this wasn't a dead
 end, and the lesson (a bug in one file doesn't mean the same constant is
 wrong everywhere it's declared) is worth remembering for anything else
 found "broken" here in the future.
+
+## Confirmed: Disable Button, Auto-Schedule Flags, Volume Balance
+
+With a local decompiled source copy available for direct grepping, four
+more characteristics moved from unverified guesses to source-traced
+confirmations in one pass:
+
+- **Disable physical button**: `setDisableBtn(Integer)` switches on the
+  literal values `0`/`1`, writing a plain 1-byte flag — same shape as
+  the Status characteristics.
+- **Sound scheduled** / **Light scheduled**: called as
+  `setSoundScheduled(1)`/`setSoundScheduled(0)` with literal integers
+  (`SetSleepScheduleFragment.java`) — confirms the guessed 0x00/0x01
+  enable-flag format exactly.
+- **Volume balance**: `setBalance(Integer balance)` validates
+  `balance >= -10 && balance <= 10` before writing
+  `(byte) balance.intValue()` — a **signed** 1-byte value, `-10` to
+  `10`, not the unsigned guess originally on record.
+
+All four are now wired up: the three flags as switches (Disable
+Physical Button, Sound Auto-Schedule, Light Auto-Schedule), Volume
+Balance as a number entity.
 
 ## Confirmed vs. Unverified
 

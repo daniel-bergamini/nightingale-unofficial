@@ -1,13 +1,14 @@
-"""Power switches for Nightingale — sound and light, via the Status characteristics.
+"""Boolean-flag switches for Nightingale.
 
-Deliberately NOT built on the "SoundOn"/"SoundOff"/"LightOn"/"LightOff"
-characteristics — see PROTOCOL.md. Those set auto-schedule times, not the
-immediate on/off state.
+Power switches are deliberately NOT built on the "SoundOn"/"SoundOff"/
+"LightOn"/"LightOff" characteristics — see PROTOCOL.md. Those set
+auto-schedule times, not the immediate on/off state.
 
 State is read back from the device (initial read on setup, then live
-notify) rather than assumed from the last command written, so the entity
-reflects reality if the unit is toggled by its physical button or drifts
-for any other reason.
+notify) rather than assumed from the last command written, so each
+entity reflects reality if the unit is toggled by its physical button
+(or, for Disable Physical Button itself, the button being disabled) or
+drifts for any other reason.
 """
 
 from __future__ import annotations
@@ -26,7 +27,15 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import NightingaleConfigEntry
 from .const import MANUFACTURER, MODEL
 from .device import NightingaleDevice, NightingaleNotFoundError
-from .protocol import LIGHT_STATUS_UUID, SOUND_STATUS_UUID, decode_bool, encode_bool
+from .protocol import (
+    DISABLE_BUTTON_UUID,
+    LIGHT_SCHEDULED_UUID,
+    LIGHT_STATUS_UUID,
+    SOUND_SCHEDULED_UUID,
+    SOUND_STATUS_UUID,
+    decode_bool,
+    encode_bool,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,11 +45,11 @@ async def async_setup_entry(
     entry: NightingaleConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Nightingale power switches for a config entry."""
+    """Set up Nightingale boolean-flag switches for a config entry."""
     device = entry.runtime_data
     async_add_entities(
         [
-            NightingalePowerSwitch(
+            NightingaleBoolSwitch(
                 device,
                 entry.title,
                 SOUND_STATUS_UUID,
@@ -48,7 +57,7 @@ async def async_setup_entry(
                 "Sound",
                 "mdi:volume-high",
             ),
-            NightingalePowerSwitch(
+            NightingaleBoolSwitch(
                 device,
                 entry.title,
                 LIGHT_STATUS_UUID,
@@ -56,12 +65,36 @@ async def async_setup_entry(
                 "Light",
                 "mdi:lightbulb",
             ),
+            NightingaleBoolSwitch(
+                device,
+                entry.title,
+                DISABLE_BUTTON_UUID,
+                "disable_button",
+                "Disable Physical Button",
+                "mdi:gesture-tap-button",
+            ),
+            NightingaleBoolSwitch(
+                device,
+                entry.title,
+                SOUND_SCHEDULED_UUID,
+                "sound_scheduled",
+                "Sound Auto-Schedule",
+                "mdi:calendar-clock",
+            ),
+            NightingaleBoolSwitch(
+                device,
+                entry.title,
+                LIGHT_SCHEDULED_UUID,
+                "light_scheduled",
+                "Light Auto-Schedule",
+                "mdi:calendar-clock",
+            ),
         ]
     )
 
 
-class NightingalePowerSwitch(SwitchEntity):
-    """An immediate on/off toggle backed by one of the Status characteristics."""
+class NightingaleBoolSwitch(SwitchEntity):
+    """An immediate on/off toggle backed by a 1-byte 0x00/0x01 characteristic."""
 
     _attr_has_entity_name = True
     _attr_should_poll = False
