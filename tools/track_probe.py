@@ -16,7 +16,12 @@ PROTOCOL.md). A first version of this script skipped that setup, so a
 "silent" result may have just meant "wrong mode/volume," not "this
 index doesn't work." This version sets the matching Sound Mode and an
 audible volume for each profile before testing its track indices, and
-restores everything (mode, both volumes, both track values) afterward.
+restores everything (mode, both volumes, both track values, and Sound
+status itself) afterward. It also force-enables Sound status at the
+start rather than just checking it -- an earlier version only warned if
+Sound looked off instead of turning it on, so a run with Sound
+forgotten off produced "all silence" for reasons having nothing to do
+with track indices.
 
 IMPORTANT: that restore writes back the same bytes it read before the
 test started, but live testing found this isn't always enough to
@@ -131,13 +136,13 @@ async def probe_track(
 async def main(address: str, max_index: int) -> None:
     async with BleakClient(address) as client:
         try:
-            status = await client.read_gatt_char(SOUND_STATUS_UUID)
-            print(
-                f"Sound status = {status!r} (should be b'\\x01' -- turn "
-                "Sound on in HA before disabling the integration if not)"
-            )
+            original_sound_status = bytes(await client.read_gatt_char(SOUND_STATUS_UUID))
         except Exception as exc:  # noqa: BLE001
             print(f"could not read sound status: {exc!r}")
+            original_sound_status = None
+        else:
+            print(f"Sound status was {original_sound_status!r}; forcing it on for this test")
+            await client.write_gatt_char(SOUND_STATUS_UUID, b"\x01", response=True)
 
         for name, (track_uuid, _mode, _vol) in TRACK_CHARACTERISTICS.items():
             dump_properties(client, name, track_uuid)
@@ -147,6 +152,15 @@ async def main(address: str, max_index: int) -> None:
             results[name] = await probe_track(
                 client, name, track_uuid, mode, vol_uuid, max_index
             )
+
+        if original_sound_status is not None:
+            try:
+                await client.write_gatt_char(
+                    SOUND_STATUS_UUID, original_sound_status, response=True
+                )
+                print(f"restored Sound status to {original_sound_status!r}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"could not restore Sound status to {original_sound_status!r}: {exc!r}")
 
         print("\n=== summary ===")
         for name, log in results.items():
