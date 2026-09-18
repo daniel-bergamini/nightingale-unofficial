@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -14,6 +15,16 @@ from .device import NightingaleDevice, NightingaleNotFoundError
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SWITCH, Platform.NUMBER, Platform.SELECT]
+
+# Nothing about entity setup (each platform's async_setup_entry, which
+# calls async_added_to_hass on every entity) is individually guaranteed
+# to finish quickly, even with device.py's own per-operation timeouts --
+# a stuck config entry ("Initializing" forever) has happened more than
+# once from a single entity's setup hanging. This is the actual backstop:
+# no matter what specific thing misbehaves in the future, entity setup
+# either finishes or gets cut off and reported as ConfigEntryNotReady
+# (which HA retries with its own backoff) within this bound.
+ENTITY_SETUP_TIMEOUT = 60
 
 type NightingaleConfigEntry = ConfigEntry[NightingaleDevice]
 
@@ -34,7 +45,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: NightingaleConfigEntry) 
 
     entry.runtime_data = device
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    try:
+        async with asyncio.timeout(ENTITY_SETUP_TIMEOUT):
+            await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except TimeoutError as err:
+        await device.async_disconnect()
+        raise ConfigEntryNotReady(
+            f"Setting up entities for {address} took longer than "
+            f"{ENTITY_SETUP_TIMEOUT}s"
+        ) from err
+
     entry.async_on_unload(device.async_disconnect)
 
     return True

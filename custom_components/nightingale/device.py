@@ -95,6 +95,32 @@ class NightingaleDevice:
         if self._client is client:
             self._client = None
 
+    async def _reset_connection_after_timeout(self) -> None:
+        """Force a disconnect after an operation timeout.
+
+        A cancelled BLE operation isn't guaranteed to cleanly abort
+        whatever it was doing at the transport level (e.g. an in-flight
+        proxy/dbus request whose response never gets matched up) --
+        continuing to reuse the same connection object risks the *next*
+        operation behaving strangely too, for reasons that have nothing
+        to do with that next operation itself. Disconnecting here means
+        the next call's _ensure_connected() always starts from a
+        genuinely fresh connection instead of an unknown one.
+        """
+        client, self._client = self._client, None
+        if client is None:
+            return
+        _LOGGER.warning("%s: operation timed out, forcing reconnect", self.address)
+        try:
+            async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
+                await client.disconnect()
+        except (BleakError, TimeoutError):
+            _LOGGER.debug(
+                "%s: disconnect after timeout also failed, discarding client anyway",
+                self.address,
+                exc_info=True,
+            )
+
     async def _ensure_connected(self) -> BleakClientWithServiceCache:
         async with self._connect_lock:
             if self._client is not None and self._client.is_connected:
@@ -119,7 +145,18 @@ class NightingaleDevice:
     async def _resubscribe_notifications(
         self, client: BleakClientWithServiceCache
     ) -> None:
-        """Re-arm notify subscriptions lost on the previous disconnect."""
+        """Re-arm notify subscriptions lost on the previous disconnect.
+
+        Runs against a connection just (re)established by the caller, so
+        a timeout here isn't treated as grounds to force a fresh
+        reconnect the way async_read_gatt/async_write_gatt do -- doing
+        that here would risk a reconnect loop if one particular
+        characteristic is what's slow. A genuine BleakError (no
+        NOTIFY/INDICATE property) permanently blacklists the
+        characteristic; a bare timeout does not, since it may just have
+        been a bad moment, not a real hardware limitation -- it's simply
+        skipped for this connection and retried on the next one.
+        """
         async with self._notify_lock:
             for char_uuid, callbacks in self._notify_callbacks.items():
                 if not callbacks or char_uuid in self._notify_unsupported:
@@ -129,7 +166,7 @@ class NightingaleDevice:
                         await client.start_notify(
                             char_uuid, self._make_notify_handler(char_uuid)
                         )
-                except (BleakError, TimeoutError):
+                except BleakError:
                     _LOGGER.warning(
                         "%s: %s does not support notifications; will only "
                         "reflect state on read/write",
@@ -138,6 +175,15 @@ class NightingaleDevice:
                         exc_info=True,
                     )
                     self._notify_unsupported.add(char_uuid)
+                    continue
+                except TimeoutError:
+                    _LOGGER.warning(
+                        "%s: subscribing to %s timed out; will retry on the "
+                        "next connection",
+                        self.address,
+                        char_uuid,
+                        exc_info=True,
+                    )
                     continue
                 self._active_notify_uuids.add(char_uuid)
 
@@ -166,11 +212,17 @@ class NightingaleDevice:
         bleak_retry_connector deliberately excludes TimeoutError from what
         @retry_bluetooth_connection_error retries, specifically so a
         caller-imposed timeout isn't multiplied across retry attempts.
-        Wrapping it as BleakError here would defeat that on purpose.
+        Wrapping it as BleakError here would defeat that on purpose. The
+        connection is force-reset either way -- see
+        _reset_connection_after_timeout.
         """
         client = await self._ensure_connected()
-        async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
-            return bytes(await client.read_gatt_char(char_uuid))
+        try:
+            async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
+                return bytes(await client.read_gatt_char(char_uuid))
+        except TimeoutError:
+            await self._reset_connection_after_timeout()
+            raise
 
     @retry_bluetooth_connection_error()
     async def async_write_gatt(
@@ -178,8 +230,12 @@ class NightingaleDevice:
     ) -> None:
         """Write a characteristic's raw bytes. See async_read_gatt re: timeout."""
         client = await self._ensure_connected()
-        async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
-            await client.write_gatt_char(char_uuid, data, response=response)
+        try:
+            async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
+                await client.write_gatt_char(char_uuid, data, response=response)
+        except TimeoutError:
+            await self._reset_connection_after_timeout()
+            raise
 
     async def async_start_notify(
         self, char_uuid: str, callback: NotifyCallback
@@ -204,7 +260,7 @@ class NightingaleDevice:
                         await client.start_notify(
                             char_uuid, self._make_notify_handler(char_uuid)
                         )
-                except (BleakError, TimeoutError):
+                except BleakError:
                     _LOGGER.warning(
                         "%s: %s does not support notifications; will only "
                         "reflect state on read/write",
@@ -214,6 +270,15 @@ class NightingaleDevice:
                     )
                     self._notify_unsupported.add(char_uuid)
                     return
+                except TimeoutError:
+                    # Unlike _resubscribe_notifications, this connection
+                    # may have been alive a while -- a timeout here is
+                    # more likely a stale connection than a bad moment,
+                    # so force a reconnect for next time (per
+                    # async_read_gatt/async_write_gatt) rather than just
+                    # skipping this characteristic.
+                    await self._reset_connection_after_timeout()
+                    raise
                 self._active_notify_uuids.add(char_uuid)
 
     async def async_stop_notify(self, char_uuid: str, callback: NotifyCallback) -> None:
@@ -230,10 +295,18 @@ class NightingaleDevice:
         try:
             async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
                 await self._client.stop_notify(char_uuid)
-        except (BleakError, TimeoutError):
+        except BleakError:
             _LOGGER.debug(
                 "%s: stop_notify failed for %s (already disconnected?)",
                 self.address,
                 char_uuid,
                 exc_info=True,
             )
+        except TimeoutError:
+            _LOGGER.debug(
+                "%s: stop_notify for %s timed out; forcing reconnect",
+                self.address,
+                char_uuid,
+                exc_info=True,
+            )
+            await self._reset_connection_after_timeout()
