@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# reverse-engineering artifacts — do not commit, vendor copyrighted code
+/decompiled/
+*.apk

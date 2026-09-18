@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a Nightingale unit",
+        "description": "Enter the MAC address and room for this Nightingale unit. Add each unit as a separate entry.",
+        "data": {
+          "address": "MAC address",
+          "room_name": "Room name"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Nightingale unit found",
+        "description": "Found a Nightingale unit at {address}. What room is it in?",
+        "data": {
+          "room_name": "Room name"
+        }
+      }
+    },
+    "error": {
+      "invalid_address": "That doesn't look like a MAC address (expected AA:BB:CC:DD:EE:FF)."
+    },
+    "abort": {
+      "already_configured": "This Nightingale unit is already configured."
+    }
+  }
+}
