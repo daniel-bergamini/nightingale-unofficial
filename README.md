@@ -51,3 +51,4 @@ Either way, Home Assistant connects through whichever adapter or proxy currently
 
 - **Config entry won't load / retries repeatedly**: confirm the unit is actually advertising and that the nearest ESPHome proxy is online (Settings → Devices & Services → Bluetooth should show it as a connected scanner).
 - **Switch doesn't reflect a physical button press**: the entity subscribes to BLE notify on the Status characteristic on setup; if it seems stuck, check the Logs for disconnect/reconnect messages — the underlying connection retries automatically but a prolonged proxy outage will show as `unavailable`.
+- **Integration stuck on "Initializing" after an update**: every BLE read/write/notify now times out at 10s rather than hanging indefinitely (0.4.1+), so this shouldn't happen again — but if it does, it means some operation genuinely took longer than that; check the Logs for a `TimeoutError` naming which characteristic.

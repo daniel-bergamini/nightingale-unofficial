@@ -127,7 +127,7 @@ class NightingaleLevelNumber(NumberEntity):
     async def async_added_to_hass(self) -> None:
         try:
             await self._device.async_start_notify(self._char_uuid, self._handle_notify)
-        except (NightingaleNotFoundError, BleakError):
+        except (NightingaleNotFoundError, BleakError, TimeoutError):
             _LOGGER.debug(
                 "%s: could not subscribe to %s", self._device.address, self._char_uuid,
                 exc_info=True,
@@ -145,7 +145,7 @@ class NightingaleLevelNumber(NumberEntity):
     async def _async_refresh_state(self) -> None:
         try:
             data = await self._device.async_read_gatt(self._char_uuid)
-        except (NightingaleNotFoundError, BleakError):
+        except (NightingaleNotFoundError, BleakError, TimeoutError):
             _LOGGER.warning(
                 "%s: could not read %s", self._device.address, self._char_uuid,
                 exc_info=True,

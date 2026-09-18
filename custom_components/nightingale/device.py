@@ -30,6 +30,14 @@ _LOGGER = logging.getLogger(__name__)
 
 NotifyCallback = Callable[[bytes], None]
 
+# No bleak/proxy operation below is guaranteed to time out on its own --
+# confirmed the hard way when a notify subscription over an ESPHome
+# proxy hung indefinitely and blocked config entry setup entirely (HA
+# awaits each entity's async_added_to_hass as part of platform setup).
+# Every read/write/notify call is wrapped so a hang becomes a catchable
+# BleakError instead of blocking forever.
+BLE_OPERATION_TIMEOUT = 10
+
 
 class NightingaleNotFoundError(Exception):
     """Raised when the address isn't currently seen by any adapter/proxy."""
@@ -105,10 +113,11 @@ class NightingaleDevice:
             if not callbacks or char_uuid in self._notify_unsupported:
                 continue
             try:
-                await client.start_notify(
-                    char_uuid, self._make_notify_handler(char_uuid)
-                )
-            except BleakError:
+                async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
+                    await client.start_notify(
+                        char_uuid, self._make_notify_handler(char_uuid)
+                    )
+            except (BleakError, TimeoutError):
                 _LOGGER.warning(
                     "%s: %s does not support notifications; will only "
                     "reflect state on read/write",
@@ -139,17 +148,26 @@ class NightingaleDevice:
 
     @retry_bluetooth_connection_error()
     async def async_read_gatt(self, char_uuid: str) -> bytes:
-        """Read a characteristic's raw bytes."""
+        """Read a characteristic's raw bytes.
+
+        Raises plain TimeoutError (not wrapped as BleakError) on timeout:
+        bleak_retry_connector deliberately excludes TimeoutError from what
+        @retry_bluetooth_connection_error retries, specifically so a
+        caller-imposed timeout isn't multiplied across retry attempts.
+        Wrapping it as BleakError here would defeat that on purpose.
+        """
         client = await self._ensure_connected()
-        return bytes(await client.read_gatt_char(char_uuid))
+        async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
+            return bytes(await client.read_gatt_char(char_uuid))
 
     @retry_bluetooth_connection_error()
     async def async_write_gatt(
         self, char_uuid: str, data: bytes, response: bool = True
     ) -> None:
-        """Write a characteristic's raw bytes."""
+        """Write a characteristic's raw bytes. See async_read_gatt re: timeout."""
         client = await self._ensure_connected()
-        await client.write_gatt_char(char_uuid, data, response=response)
+        async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
+            await client.write_gatt_char(char_uuid, data, response=response)
 
     async def async_start_notify(
         self, char_uuid: str, callback: NotifyCallback
@@ -169,10 +187,11 @@ class NightingaleDevice:
             return
         if char_uuid not in self._active_notify_uuids:
             try:
-                await client.start_notify(
-                    char_uuid, self._make_notify_handler(char_uuid)
-                )
-            except BleakError:
+                async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
+                    await client.start_notify(
+                        char_uuid, self._make_notify_handler(char_uuid)
+                    )
+            except (BleakError, TimeoutError):
                 _LOGGER.warning(
                     "%s: %s does not support notifications; will only "
                     "reflect state on read/write",
@@ -196,8 +215,9 @@ class NightingaleDevice:
         if self._client is None or not self._client.is_connected:
             return
         try:
-            await self._client.stop_notify(char_uuid)
-        except BleakError:
+            async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
+                await self._client.stop_notify(char_uuid)
+        except (BleakError, TimeoutError):
             _LOGGER.debug(
                 "%s: stop_notify failed for %s (already disconnected?)",
                 self.address,
