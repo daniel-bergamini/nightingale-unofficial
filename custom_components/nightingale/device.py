@@ -51,6 +51,17 @@ class NightingaleDevice:
         self.address = address
         self._client: BleakClientWithServiceCache | None = None
         self._connect_lock = asyncio.Lock()
+        # Guards _active_notify_uuids/_notify_unsupported and the actual
+        # client.start_notify() call. Without this, two entities sharing
+        # one characteristic (first happened in 0.7.0: Sleep Blanket Room
+        # Type and Surface Type both notify on SLEEP_SOUND_TRACK_UUID) can
+        # race async_start_notify() concurrently and both decide the
+        # subscription hasn't started yet, issuing two simultaneous
+        # notify-enable requests for the same characteristic -- which
+        # hung the underlying connection badly enough that even this
+        # module's own per-operation timeouts couldn't recover it, only
+        # a fresh connection (e.g. via a completely separate client) did.
+        self._notify_lock = asyncio.Lock()
         self._notify_callbacks: dict[str, list[NotifyCallback]] = {}
         self._active_notify_uuids: set[str] = set()
         # Characteristics that raised BleakError on start_notify (e.g. no
@@ -109,25 +120,26 @@ class NightingaleDevice:
         self, client: BleakClientWithServiceCache
     ) -> None:
         """Re-arm notify subscriptions lost on the previous disconnect."""
-        for char_uuid, callbacks in self._notify_callbacks.items():
-            if not callbacks or char_uuid in self._notify_unsupported:
-                continue
-            try:
-                async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
-                    await client.start_notify(
-                        char_uuid, self._make_notify_handler(char_uuid)
+        async with self._notify_lock:
+            for char_uuid, callbacks in self._notify_callbacks.items():
+                if not callbacks or char_uuid in self._notify_unsupported:
+                    continue
+                try:
+                    async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
+                        await client.start_notify(
+                            char_uuid, self._make_notify_handler(char_uuid)
+                        )
+                except (BleakError, TimeoutError):
+                    _LOGGER.warning(
+                        "%s: %s does not support notifications; will only "
+                        "reflect state on read/write",
+                        self.address,
+                        char_uuid,
+                        exc_info=True,
                     )
-            except (BleakError, TimeoutError):
-                _LOGGER.warning(
-                    "%s: %s does not support notifications; will only "
-                    "reflect state on read/write",
-                    self.address,
-                    char_uuid,
-                    exc_info=True,
-                )
-                self._notify_unsupported.add(char_uuid)
-                continue
-            self._active_notify_uuids.add(char_uuid)
+                    self._notify_unsupported.add(char_uuid)
+                    continue
+                self._active_notify_uuids.add(char_uuid)
 
     def _make_notify_handler(self, char_uuid: str) -> Callable[[object, bytearray], None]:
         def _handler(_sender: object, data: bytearray) -> None:
@@ -183,25 +195,26 @@ class NightingaleDevice:
         # since we appended above before calling it. Only start it here if
         # that didn't just happen, to avoid double-subscribing.
         client = await self._ensure_connected()
-        if char_uuid in self._notify_unsupported:
-            return
-        if char_uuid not in self._active_notify_uuids:
-            try:
-                async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
-                    await client.start_notify(
-                        char_uuid, self._make_notify_handler(char_uuid)
-                    )
-            except (BleakError, TimeoutError):
-                _LOGGER.warning(
-                    "%s: %s does not support notifications; will only "
-                    "reflect state on read/write",
-                    self.address,
-                    char_uuid,
-                    exc_info=True,
-                )
-                self._notify_unsupported.add(char_uuid)
+        async with self._notify_lock:
+            if char_uuid in self._notify_unsupported:
                 return
-            self._active_notify_uuids.add(char_uuid)
+            if char_uuid not in self._active_notify_uuids:
+                try:
+                    async with asyncio.timeout(BLE_OPERATION_TIMEOUT):
+                        await client.start_notify(
+                            char_uuid, self._make_notify_handler(char_uuid)
+                        )
+                except (BleakError, TimeoutError):
+                    _LOGGER.warning(
+                        "%s: %s does not support notifications; will only "
+                        "reflect state on read/write",
+                        self.address,
+                        char_uuid,
+                        exc_info=True,
+                    )
+                    self._notify_unsupported.add(char_uuid)
+                    return
+                self._active_notify_uuids.add(char_uuid)
 
     async def async_stop_notify(self, char_uuid: str, callback: NotifyCallback) -> None:
         """Unsubscribe a single callback from a characteristic's notifications."""
