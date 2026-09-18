@@ -71,12 +71,12 @@ class NightingaleConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle manual entry — MAC address plus a room label.
 
-        Manual entry is the primary path here: the advertised local_name
-        for the NG2000 hasn't been confirmed yet, so the bluetooth matcher
-        in manifest.json only matches on the service UUID, and discovery
-        may not surface every unit. Both known units' MAC addresses are
-        already known from live testing, so typing them in directly is
-        reliable regardless of discovery.
+        Kept as a fallback alongside auto-discovery (manifest.json now
+        matches on both the service UUID and the confirmed local_name,
+        "Nightingale"): both known units' MAC addresses are already known
+        from live testing, so typing them in directly is reliable even if
+        discovery hasn't surfaced a unit yet (e.g. it hasn't advertised
+        near a proxy since HA started).
         """
         errors: dict[str, str] = {}
 

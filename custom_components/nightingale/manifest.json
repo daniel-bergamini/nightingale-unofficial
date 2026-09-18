@@ -6,6 +6,10 @@
     {
       "service_uuid": "80b03553-ac03-41bc-8d3c-931f0a330168",
       "connectable": true
+    },
+    {
+      "local_name": "Nightingale",
+      "connectable": true
     }
   ],
   "config_flow": true,
@@ -14,5 +18,5 @@
   "issue_tracker": "https://github.com/daniel-bergamini/nightingale-unofficial/issues",
   "iot_class": "local_push",
   "requirements": ["bleak-retry-connector>=3.4.0"],
-  "version": "0.1.0"
+  "version": "0.1.1"
 }

@@ -24,6 +24,8 @@ All functional characteristics live under one service:
 ngServiceUUID = 80b03553-ac03-41bc-8d3c-931f0a330168
 ```
 
+Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): advertises this service UUID and local name `Nightingale` (`Name:`/`Alias:` both read exactly `Nightingale`, no suffix or per-unit distinguishing string).
+
 ## Characteristics
 
 ### Power / Status

@@ -37,14 +37,13 @@ Future updates then show up in HACS as a normal update notification, tied to thi
 
 ## Adding a unit
 
-Repeat once per Nightingale unit (once per room):
+Repeat once per Nightingale unit (once per room). Two paths, depending on whether HA has already seen the unit advertise:
 
-1. Settings → Devices & Services → **+ Add Integration** → search "Nightingale" → select it.
+**Auto-discovered** (a unit has advertised near an HA-connected proxy since HA started): a "Nightingale" card appears under Settings → Devices & Services. Click **Configure**, enter a room name, submit — the MAC address is already filled in from the discovery.
 
-   This opens a manual-entry form rather than an auto-discovered card — the NG2000's advertised `local_name` hasn't been confirmed yet, so the manifest's Bluetooth matcher only matches on the service UUID. Manual entry works reliably regardless, since you already know each unit's MAC address.
-2. Enter the unit's MAC address (`AA:BB:CC:DD:EE:FF`) and a room name.
-3. Submit. Home Assistant will connect through whichever adapter or proxy currently sees that address.
-4. You'll get one device with a Sound switch and a Light switch, both reflecting live state.
+**Manual** (nothing discovered yet, or you'd rather not wait): Settings → Devices & Services → **+ Add Integration** → search "Nightingale" → select it. Enter the unit's MAC address (`AA:BB:CC:DD:EE:FF`) and a room name, submit.
+
+Either way, Home Assistant connects through whichever adapter or proxy currently sees that address, and you end up with one device exposing a Sound switch and a Light switch, both reflecting live state.
 
 ## Troubleshooting
 
