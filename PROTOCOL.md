@@ -45,8 +45,8 @@ Confirmed live via `bluetoothctl info` against a physical unit (2026-09-18): adv
 | Relax volume | `bb23ae19-b2f0-46f4-930d-d89047d92c06` | 1 byte, `0x00`–`0x0A` assumed (0–10, carried over from sleep volume/light level's independently-binary-searched ceiling, not separately re-verified). **Live A/B tested and confirmed to audibly control live playback** — despite the name, this is the volume control that actually does something right now. |
 | Page volume | ~~`f2e85c5e6-97a4-4c3a-9742-5278bf3881ec`~~ — **invalid, unusable** | 1 byte, `0x00`–`0x64` (unverified) |
 | Volume balance (L/R) | `c32f5045-d621-4c9e-8f9b-557b5a5d65cd` | Integer, likely signed for L/R skew (unverified) |
-| Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | Integer index (unverified — track list not yet enumerated) |
-| Relax sound track | `0e4fa979-6e76-45f0-8887-762ee399121c` | Integer index (unverified) |
+| Sleep sound track | `a54d9906-4298-4656-9bd3-7095e87365d6` | Byte width unconfirmed — see "Relax Sound Track Is (At Least) 2 Bytes" below before assuming 1 byte (unverified — track list not yet enumerated) |
+| Relax sound track | `0e4fa979-6e76-45f0-8887-762ee399121c` | **At least 2 bytes** (live-confirmed: original value read back `b'\x01\xfe'`), exact encoding still unverified — see "Relax Sound Track Is (At Least) 2 Bytes" below |
 | Sound scheduled (enable flag) | `86dcd724-031d-4ebe-a2e1-912670a06c3c` | Integer, likely `0x00`/`0x01` (unverified) |
 | **Sound auto-on time** ⚠️ not an immediate toggle | `11104650-14be-436b-a900-b72763c3be82` | 2 bytes: `[minute, hour]`, both plain integers, 24hr |
 | **Sound auto-off time** ⚠️ not an immediate toggle | `5e6379e1-bd5b-44a2-ac16-74f845d6c388` | 2 bytes: `[minute, hour]`, same format |
@@ -144,25 +144,44 @@ audible effect while Sound Mode is set to Sound Blanket, and Relax
 Volume only while it's set to Nature Sound. Both stay as separate
 entities under their full vendor names.
 
-## Caution: Sound Track Selection May Hold Volatile State
+## Caution: Relax Sound Track Is (At Least) 2 Bytes, Not 1
 
 While probing the still-unverified sleep/relax sound-track
 characteristics (`tools/track_probe.py`), cycling `RELAX_SOUND_TRACK_UUID`
-through several index values and then writing back the exact byte read
-before the test started did **not** restore the original audio —
-the unit kept playing something other than its usual crickets/bird
-loop. A full power cycle (unplug, wait ~10s, plug back in) did restore
-it. This suggests the "current track" this characteristic reports isn't
-a simple stable content selector that round-trips cleanly through
-read-then-write-back; it may be an index into some runtime/volatile
-state that a byte write-back doesn't fully reset.
+through single-byte index values (`0x00`-`0x09`) and then writing back
+the exact bytes read before the test started did **not** reliably
+restore the original audio. A power cycle fixed it once, but not on a
+second occurrence.
 
-Practical implication: writing to these track characteristics during
-testing isn't reliably undone by writing the original value back.
-Power-cycle the physical unit after testing them, every time, rather
-than trusting the automatic restore alone. Nothing suggests this is
-destructive or persistent — a power cycle has fixed it every time so
-far — but it's a real caveat for anyone probing these further.
+The root cause only became clear from an earlier run's logged output:
+
+```
+current raw value: b'\x01\xfe'
+```
+
+That's **2 bytes**, not 1. Every probe write up to this point —
+`bytes([index])` for `index` in `0..9` — wrote a single byte into a
+characteristic that actually holds two, matching neither this
+protocol's usual single-byte convention nor the schedule
+characteristics' `[minute, hour]` pair convention exactly (format
+otherwise still unconfirmed — could be two independent bytes, or one
+16-bit value in either endianness). `PAGE_VOLUME_UUID`'s "Integer
+index" description in this table never specified a width; that
+assumption (1 byte, matching every other numeric characteristic here)
+turned out to be wrong for this one.
+
+Recovery in progress: writing the recovered raw value (`01 FE`) back
+via nRF Connect directly, and via `tools/init_state.py` (which also
+resets Sound/Light on, Sound Mode to Nature Sound, and all volumes to a
+known 5) as a clean baseline to test from. Whether this fully restores
+the original audio, and what the real 2-byte format actually encodes,
+is still being confirmed as of this writing.
+
+Practical implication for anyone probing this further: don't assume
+byte width from naming or from sibling characteristics. Read and log
+the actual current value **before** writing anything, for every
+characteristic, every time — the exact lesson `tools/init_state.py`
+and this incident exist to reinforce.
 
 ## Known Vendor Bug: Page Volume UUID
 
