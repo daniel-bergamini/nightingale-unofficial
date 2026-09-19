@@ -367,6 +367,37 @@ array's real length, not a limitation of this integration's own
 it was previously only pattern-matched as the logical fourth primary,
 never actually seen in the app's own resources until this extraction.
 
+The 4-color limit is purely a software choice, not evidence either way
+about the firmware: `LeNightingaleDevice.setLightColor(Integer)` is a
+hardcoded `switch` on a button index (1-4) that picks one of exactly
+four literal byte arrays — there's no code path anywhere in the app
+that could ever construct or send a fifth color. Unlike Volume/Ramp,
+there's no app-side range check here that would at least imply a known
+device-side constraint.
+
+Live-tested directly (`tools/light_color_probe.py`,
+`tools/light_color_set.py`) against a physical unit: the device
+accepts and stores **any** 3-byte RGB value — every write read back
+byte-for-byte identical, for both preset and non-preset colors. Pure
+single-channel values at reduced intensity (`80 00 00`, `00 80 00`,
+`00 00 80`) all rendered as correctly-colored, appropriately dimmer
+red/green/blue, confirming the R/G/B byte order itself is right.
+
+However, two-channel blends with a large green component alongside red
+rendered visibly wrong: `FF 80 00` (intended orange) looked greenish,
+and `FF C0 80` (intended warm white) looked light blue. Since pure
+channels and roughly-balanced blends (purple, cyan) all rendered
+correctly, this isn't a byte-order bug — a real channel swap would
+also break the already-confirmed pure presets, and it doesn't. The
+likely explanation is mundane: an uncorrected, unbalanced RGB LED,
+where the green die is disproportionately bright relative to red at
+moderate-to-high duty cycles (a common trait of cheap RGB LEDs without
+a gamma/channel-correction curve applied), not anything wrong with the
+protocol. Full arbitrary-RGB support is real and usable, but a color
+picker exposing raw RGB should not be assumed to render visually
+faithful colors for every blend, particularly warm/orange tones with a
+substantial red-plus-green mix.
+
 ## Known Vendor Bug: Page Volume UUID (Recovered, Not a Dead End)
 
 `ngVolumePageUUID` in `NightingaleGatt.java` (line 55) is declared as:
