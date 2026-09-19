@@ -365,6 +365,40 @@ apparent single-byte-percentage shape as confirmed neighbors — but haven't bee
 their construction code or tested live yet. Treat unverified entries as a starting guess,
 not a guarantee.
 
+## Multi-Unit Rooms: LeDeviceSync Is a One-Time Clone, Not a Live Pairing
+
+The marketing copy describes sound blankets reflecting "from two
+different units, each with 2 speakers" — but there's no special
+stereo-mode characteristic or ongoing pairing protocol behind it.
+`bluerocket/cgm/device/LeDeviceSync.java` implements the entire feature:
+given a master address and a new ("copy") address, it opens BLE
+connections to both and, for a fixed list of 18 characteristics, reads
+the raw bytes off the master and writes them straight onto the new
+unit — no decode/re-encode, just a byte-for-byte passthrough.
+
+It's triggered from exactly one place: `DeviceSetupTestFragmentVF.java`'s
+add-a-device wizard, specifically the `NEW_BLE_DEVICE` configuration
+path when a room already has a unit configured. It runs once, when the
+second unit is onboarded, and never again — after that, each unit is
+just an independent device that happened to start with matching
+settings. Any change afterward, in the app or over BLE directly,
+updates only whichever unit you're actually talking to.
+
+The 18 synced characteristics: Location name, Room name, Sleep sound
+track (Blanket), Sound status, Light status, Sound Mute, Sleep Volume,
+Light Level, Sound/Light Scheduled flags, Light Color, all four
+schedule times, Sound Mode, Relax Sound Track, Relax Volume. Notably
+**not** synced: Volume Balance, Disable Button, Ramp — balance makes
+sense to exclude (L/R skew is about a specific unit's physical
+placement, not something that should transfer to a second unit
+elsewhere in the room); no evidence either way on why the other two
+aren't included.
+
+Implemented as an opt-in config flow step (`config_flow.py`'s
+`copy_settings` step, `sync.py`'s `async_copy_settings`), matching the
+app's own one-time-clone behavior exactly, including the raw
+byte-passthrough approach — see README.md, "Adding a second unit."
+
 ## Notes on Schedule vs. Immediate Control
 
 A recurring gotcha during reverse-engineering: characteristics named "SoundOn"/"SoundOff"

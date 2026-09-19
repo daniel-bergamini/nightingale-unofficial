@@ -45,7 +45,9 @@ Repeat once per Nightingale unit (once per room). Two paths, depending on whethe
 
 **Manual** (nothing discovered yet, or you'd rather not wait): Settings → Devices & Services → **+ Add Integration** → search "Nightingale" → select it. Enter the unit's MAC address (`AA:BB:CC:DD:EE:FF`) and a room name, submit.
 
-Either way, Home Assistant connects through whichever adapter or proxy currently sees that address, and you end up with one device exposing a Sound switch and a Light switch, both reflecting live state.
+Either way, Home Assistant connects through whichever adapter or proxy currently sees that address, and you end up with one device exposing a full set of entities, all reflecting live state.
+
+**Adding a second unit** (0.10.0+): if you already have a Nightingale configured, the flow adds one more step — "Copy settings from an existing Nightingale?" — mirroring the vendor app's own behavior when adding a second unit to a room (see PROTOCOL.md). It's opt-in (defaults to "Don't copy") and runs once, during this new unit's first setup; it does not keep the two in sync afterward. The source unit's config entry needs to already be loaded (its own connection currently up) for the copy to succeed — if it isn't, the copy is skipped with a warning in the logs rather than failing the new unit's setup.
 
 ## Troubleshooting
 

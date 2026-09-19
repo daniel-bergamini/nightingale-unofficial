@@ -15,6 +15,13 @@
         "data": {
           "room_name": "Room name"
         }
+      },
+      "copy_settings": {
+        "title": "Copy settings?",
+        "description": "Copy Sound/Light settings, schedule, and volume from an existing Nightingale onto this one? Matches how the original app sets up a second unit in a room. You can skip this and configure it separately.",
+        "data": {
+          "copy_from": "Copy settings from"
+        }
       }
     },
     "error": {
