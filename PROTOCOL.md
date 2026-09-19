@@ -398,6 +398,17 @@ picker exposing raw RGB should not be assumed to render visually
 faithful colors for every blend, particularly warm/orange tones with a
 substantial red-plus-green mix.
 
+Wired up as `light.py`'s `NightingaleLight` entity (a real HA `light`
+with a color wheel, `ColorMode.RGB`), which replaced the old 4-preset
+`NightingaleLightColorSelect` in select.py, along with folding in the
+"Light" power switch and "Light Level" number as that same entity's
+on/off and brightness — one native light entity instead of three
+separate controls. The RGB-skew caveat above is left to the user, not
+corrected in software: the device always reports back exactly the
+value it was sent, so there's no signal available at the protocol
+level to detect or correct for the LED's own miscalibration, and a
+handful of test photos isn't a reliable basis for a correction curve.
+
 ## Known Vendor Bug: Page Volume UUID (Recovered, Not a Dead End)
 
 `ngVolumePageUUID` in `NightingaleGatt.java` (line 55) is declared as:

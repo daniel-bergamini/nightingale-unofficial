@@ -1,4 +1,7 @@
-"""Select entities for Nightingale: Sound Mode, Light Color, sound tracks.
+"""Select entities for Nightingale: Sound Mode and sound tracks.
+
+Light Color used to be a 4-preset select here; it's now part of the
+full RGB Light entity in light.py instead (see that module's docstring).
 
 The Sleep (Sound Blanket) profile's track is split into two selects --
 Room Type and Surface Type -- matching the vendor's own setup wizard
@@ -26,8 +29,6 @@ from . import NightingaleConfigEntry
 from .const import MANUFACTURER, MODEL
 from .device import NightingaleDevice, NightingaleNotFoundError
 from .protocol import (
-    LIGHT_COLOR_PRESETS,
-    LIGHT_COLOR_UUID,
     NATURE_SOUND_TRACKS,
     RELAX_SOUND_TRACK_UUID,
     ROOM_STYLE_LABELS,
@@ -38,11 +39,9 @@ from .protocol import (
     RoomType,
     SoundMode,
     decode_blanket,
-    decode_rgb,
     decode_sound_mode,
     decode_sound_track_id,
     encode_blanket,
-    encode_rgb,
     encode_sound_mode,
     encode_sound_track_id,
 )
@@ -55,10 +54,6 @@ SOUND_MODE_LABELS = {
 }
 SOUND_MODE_BY_LABEL = {label: mode for mode, label in SOUND_MODE_LABELS.items()}
 
-# name.capitalize() turns "white" into "White", etc.
-LIGHT_COLOR_LABELS = {rgb: name.capitalize() for name, rgb in LIGHT_COLOR_PRESETS.items()}
-LIGHT_COLOR_RGB_BY_LABEL = {label: rgb for rgb, label in LIGHT_COLOR_LABELS.items()}
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -70,7 +65,6 @@ async def async_setup_entry(
     async_add_entities(
         [
             NightingaleSoundModeSelect(device, entry.title),
-            NightingaleLightColorSelect(device, entry.title),
             NightingaleRelaxSoundTrackSelect(device, entry.title),
             NightingaleSleepRoomTypeSelect(device, entry.title),
             NightingaleSleepSurfaceTypeSelect(device, entry.title),
@@ -164,30 +158,6 @@ class NightingaleSoundModeSelect(_NightingaleSelectBase):
 
     def _encode(self, option: str) -> bytes:
         return encode_sound_mode(SOUND_MODE_BY_LABEL[option])
-
-
-class NightingaleLightColorSelect(_NightingaleSelectBase):
-    """Light color, from the confirmed/inferred RGB presets in protocol.py.
-
-    "Red" is inferred, not confirmed against a physical unit -- see
-    PROTOCOL.md. If the device is set to some other RGB value entirely
-    (e.g. from before this integration existed), current_option comes
-    back None: HA shows the select as unset until you explicitly pick one
-    of the known presets.
-    """
-
-    _attr_options = list(LIGHT_COLOR_RGB_BY_LABEL.keys())
-
-    def __init__(self, device: NightingaleDevice, room_name: str) -> None:
-        super().__init__(
-            device, room_name, LIGHT_COLOR_UUID, "light_color", "Light Color", "mdi:palette"
-        )
-
-    def _decode(self, data: bytes) -> str | None:
-        return LIGHT_COLOR_LABELS.get(decode_rgb(data))
-
-    def _encode(self, option: str) -> bytes:
-        return encode_rgb(*LIGHT_COLOR_RGB_BY_LABEL[option])
 
 
 class _NightingaleSoundTrackSelect(_NightingaleSelectBase):

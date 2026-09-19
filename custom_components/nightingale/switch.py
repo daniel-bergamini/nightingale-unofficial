@@ -30,7 +30,6 @@ from .device import NightingaleDevice, NightingaleNotFoundError
 from .protocol import (
     DISABLE_BUTTON_UUID,
     LIGHT_SCHEDULED_UUID,
-    LIGHT_STATUS_UUID,
     SOUND_MUTE_UUID,
     SOUND_SCHEDULED_UUID,
     SOUND_STATUS_UUID,
@@ -57,14 +56,6 @@ async def async_setup_entry(
                 "sound_power",
                 "Sound",
                 "mdi:volume-high",
-            ),
-            NightingaleBoolSwitch(
-                device,
-                entry.title,
-                LIGHT_STATUS_UUID,
-                "light_power",
-                "Light",
-                "mdi:lightbulb",
             ),
             NightingaleBoolSwitch(
                 device,

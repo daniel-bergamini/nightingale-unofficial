@@ -1,12 +1,14 @@
-"""Numeric entities for Nightingale: volume/level sliders and L/R balance.
+"""Numeric entities for Nightingale: volume sliders and L/R balance.
 
-Sleep/Relax Volume and Light Level are 11-step (0-10) level controls,
-not 0-100 percentages -- despite looking like a percent based on the
-decompiled app's naming and byte shape, live testing (binary-searching
-the write ceiling against a physical unit) found the device rejects
-anything above 10 with GATT Application Error 0x80. See
-SLEEP_VOLUME_MAX/LIGHT_LEVEL_MAX/RELAX_VOLUME_MAX in protocol.py and
-PROTOCOL.md.
+Sleep/Relax Volume are 11-step (0-10) level controls, not 0-100
+percentages -- despite looking like a percent based on the decompiled
+app's naming and byte shape, live testing (binary-searching the write
+ceiling against a physical unit) found the device rejects anything
+above 10 with GATT Application Error 0x80. See
+SLEEP_VOLUME_MAX/RELAX_VOLUME_MAX in protocol.py and PROTOCOL.md.
+(Light Level is the same kind of 0-10 characteristic, but lives on the
+Light entity in light.py as HA-standard 0-255 brightness instead of a
+separate number, since it's part of the same light.)
 
 Sleep Volume and Relax Volume are kept as separate entities under their
 full vendor names, not collapsed into one "volume": confirmed live, the
@@ -41,8 +43,6 @@ from . import NightingaleConfigEntry
 from .const import MANUFACTURER, MODEL
 from .device import NightingaleDevice, NightingaleNotFoundError
 from .protocol import (
-    LIGHT_LEVEL_MAX,
-    LIGHT_LEVEL_UUID,
     RELAX_VOLUME_MAX,
     RELAX_VOLUME_UUID,
     SLEEP_VOLUME_MAX,
@@ -85,15 +85,6 @@ async def async_setup_entry(
                 "relax_volume",
                 "Relax Volume",
                 "mdi:volume-medium",
-            ),
-            NightingaleLevelNumber(
-                device,
-                entry.title,
-                LIGHT_LEVEL_UUID,
-                LIGHT_LEVEL_MAX,
-                "light_level",
-                "Light Level",
-                "mdi:brightness-percent",
             ),
             NightingaleBalanceNumber(device, entry.title),
         ]

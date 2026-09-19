@@ -17,6 +17,7 @@ from .sync import async_copy_settings
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
+    Platform.LIGHT,
     Platform.SWITCH,
     Platform.NUMBER,
     Platform.SELECT,
