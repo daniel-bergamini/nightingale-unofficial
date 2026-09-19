@@ -237,6 +237,15 @@ def decode_bool(data: bytes) -> bool:
     return data[0] != 0x00
 
 
+def decode_string(data: bytes) -> str:
+    """Decode a UTF-8 string characteristic (Room name, Location name).
+
+    Strips trailing NUL padding, since fixed-length GATT string fields
+    commonly pad with \\x00 rather than sending an exact-length value.
+    """
+    return data.decode("utf-8", errors="replace").rstrip("\x00").strip()
+
+
 def encode_level(value: int, max_value: int) -> bytes:
     """Encode a 1-byte level in 0..max_value.
 

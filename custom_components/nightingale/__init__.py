@@ -14,7 +14,12 @@ from .device import NightingaleDevice, NightingaleNotFoundError
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SWITCH, Platform.NUMBER, Platform.SELECT]
+PLATFORMS: list[Platform] = [
+    Platform.SWITCH,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+]
 
 # Nothing about entity setup (each platform's async_setup_entry, which
 # calls async_added_to_hass on every entity) is individually guaranteed

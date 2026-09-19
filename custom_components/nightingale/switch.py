@@ -31,6 +31,7 @@ from .protocol import (
     DISABLE_BUTTON_UUID,
     LIGHT_SCHEDULED_UUID,
     LIGHT_STATUS_UUID,
+    SOUND_MUTE_UUID,
     SOUND_SCHEDULED_UUID,
     SOUND_STATUS_UUID,
     decode_bool,
@@ -64,6 +65,14 @@ async def async_setup_entry(
                 "light_power",
                 "Light",
                 "mdi:lightbulb",
+            ),
+            NightingaleBoolSwitch(
+                device,
+                entry.title,
+                SOUND_MUTE_UUID,
+                "sound_mute",
+                "Sound Mute",
+                "mdi:volume-mute",
             ),
             NightingaleBoolSwitch(
                 device,
