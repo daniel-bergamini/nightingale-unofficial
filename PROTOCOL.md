@@ -145,6 +145,19 @@ audible effect while Sound Mode is set to Sound Blanket, and Relax
 Volume only while it's set to Nature Sound. Both stay as separate
 entities under their full vendor names.
 
+Independent corroboration turned up later, in a 2016 New Atlas review's
+product photo of the actual app UI (iOS/Android/web, per its caption):
+the volume dial reads a plain integer ("4", "5" in different screenshots)
+— matching the 0–10 scale found by binary search, not a coincidence —
+and there's a visible toggle switch labeled **"Sleep Blanket Mode"** /
+**"Soothing Sounds Mode"**, the exact same enum as `SOUND_MODE_UUID`
+under slightly different marketing wording than "Sound Blanket"/"Nature
+Sound". The photographed room, labeled "Infant, Toddler & Kids Room
+Blanket", is a *third* variant of the Kids room type's name (see "Room
+Type / Surface Type, Not One Flat List" below for the other two) — this
+vendor was never consistent about that one room type's name across any
+of its own surfaces.
+
 ## Caution: Relax Sound Track Is (At Least) 2 Bytes, Not 1
 
 While probing the still-unverified sleep/relax sound-track
@@ -272,16 +285,29 @@ public static final String ARG_SURFACE_TYPE = "surfaceType";
 ```
 
 So the two vendor-defined dimensions are literally **Room Type**
-(Adult Bedroom, Infant/Toddler & Youth Room, Snoring, Tinnitus,
+(Adult Bedroom, Youth Bedroom, Snoring Condition, Tinnitus Condition,
 Hospital Room) and **Surface Type** (Absorptive, Neutral, Reflective).
-Surface Type's three labels are exact — taken directly from
-`Blanket.generateBlanketDescription()`'s literal strings. Room Type's
-labels are inferred from resource-id naming
-(`adult_bedroom_type`, `childsroom_type`, `hospital_type`,
-`tinnitus_type`, `snoring_type` in `SelectingBlanketFragment.java`) —
-no `strings.xml` was available in this decompile to confirm the exact
-rendered text, so treat these five labels as reasonable, name-derived
-guesses rather than a byte-for-byte quote.
+All of these are now confirmed exact — extracted directly from the
+APK's compiled resource table with `androguard`, not inferred from
+resource-id naming as originally documented (this repo initially had
+no way to read compiled resource values, only decompiled Java source;
+see "Extracting Compiled Resources, Not Just Decompiled Source" below).
+That extraction also caught three labels this repo had wrong: the
+picker actually says "Youth Bedroom", "Snoring Condition", and
+"Tinnitus Condition", not "Infant, Toddler & Youth Room", "Snoring",
+and "Tinnitus" as originally guessed.
+
+One genuine wrinkle, not a mistake: `Blanket.generateBlanketName()`'s
+confirmed string for the *same* Kids room type is "Infant, Toddler &
+Youth Room Blanket" — a third variant, different again from both the
+picker label above and the "Infant, Toddler & Kids Room Blanket"
+wording seen in the app screenshot referenced earlier in this document.
+The vendor is genuinely inconsistent about this one room type's name
+across its own screens. `protocol.py` keeps both meanings distinct
+rather than collapsing them: `ROOM_TYPE_LABELS` for the picker (what
+you choose *from* — used as the select entity's options) and
+`BLANKET_NAMES` for the resulting blanket's full name (what the app
+displays once one's active — used for `BEDROOM_BLANKETS`/Now Playing).
 
 Implemented as two select entities (`RoomType`/`RoomStyle` enums,
 `encode_blanket`/`decode_blanket` in `protocol.py`, mirroring
@@ -290,6 +316,56 @@ select: **Sleep Blanket Room Type** and **Sleep Blanket Surface Type**.
 Both read and write the same combined `SLEEP_SOUND_TRACK_UUID` value —
 changing one re-reads the characteristic first so the other dimension's
 current setting isn't clobbered, rather than assuming a cached value.
+
+## Extracting Compiled Resources, Not Just Decompiled Source
+
+`jadx` (used for everything else in this document) only decompiles
+`classes.dex` back to Java source — it doesn't extract the compiled
+resource table (`resources.arsc`), so any string/array/color *resource*
+referenced by ID (`R.string.foo`, `R.array.bar`) was previously only
+inferable from the resource's ID name, not its actual rendered value.
+`androguard` (a pure-Python APK analysis library, `pip install
+androguard`) reads `resources.arsc` directly and can resolve any
+resource ID to its real compiled value:
+
+```python
+from androguard.core.apk import APK
+apk = APK("nightingale.apk")
+ar = apk.get_android_resources()
+pkg = ar.get_packages_names()[0]
+res_id = ar.get_res_id_by_key(pkg, "array", "lightColors")
+ar.get_resolved_res_configs(res_id)  # -> the actual array contents
+```
+
+This is how the Light Color palette and the five Room Type picker
+labels below went from "confirmed by naming" or "inferred" to
+byte-for-byte confirmed. Worth reaching for any time a characteristic's
+options are documented as "inferred from resource-id naming" — that
+phrase specifically means jadx-only decompilation couldn't confirm the
+exact text, which `androguard` usually can.
+
+## Confirmed: Light Color Is Exactly 4 Colors — Not an Integration Limitation
+
+`LIGHT_COLOR_UUID` is a 3-byte RGB characteristic — nothing about the
+wire format limits it to a handful of presets, so it was a fair
+question whether White/Green/Blue/Red was the complete native palette
+or just what this integration happened to implement. Traced to
+`RoomSettingsViewModel.loadColors()`, which populates the app's own
+color picker from `Application.getContext().getResources()
+.getIntArray(R.array.lightColors)` — a genuine Android resource array,
+extracted directly from the compiled resource table:
+
+```
+R.array.lightColors = [0xFFFFFFFF, 0xFFFF0000, 0xFF00FF00, 0xFF0000FF]
+```
+
+Four entries, exactly White/Red/Green/Blue (Android's `0xAARRGGBB`
+format; alpha is always `0xFF`/opaque, irrelevant to the 3-byte BLE
+format). This is the app's **entire** palette — confirmed by the
+array's real length, not a limitation of this integration's own
+`LIGHT_COLOR_PRESETS`. Also promotes "Red" from inferred to confirmed:
+it was previously only pattern-matched as the logical fourth primary,
+never actually seen in the app's own resources until this extraction.
 
 ## Known Vendor Bug: Page Volume UUID (Recovered, Not a Dead End)
 

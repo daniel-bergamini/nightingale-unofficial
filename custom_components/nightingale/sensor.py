@@ -33,12 +33,12 @@ from . import NightingaleConfigEntry
 from .const import MANUFACTURER, MODEL
 from .device import NightingaleDevice, NightingaleNotFoundError
 from .protocol import (
+    BLANKET_NAMES,
     LOCATION_NAME_UUID,
     NATURE_SOUND_TRACKS,
     RELAX_SOUND_TRACK_UUID,
     ROOM_NAME_UUID,
     ROOM_STYLE_LABELS,
-    ROOM_TYPE_LABELS,
     SLEEP_SOUND_TRACK_UUID,
     SOUND_MODE_UUID,
     SOUND_STATUS_UUID,
@@ -239,7 +239,7 @@ class NightingaleNowPlayingSensor(SensorEntity):
         if components is None:
             return None
         room_type, room_style = components
-        return f"{ROOM_TYPE_LABELS[room_type]} Blanket ({ROOM_STYLE_LABELS[room_style]})"
+        return f"{BLANKET_NAMES[room_type]} ({ROOM_STYLE_LABELS[room_style]})"
 
     async def _async_refresh_all(self) -> None:
         try:

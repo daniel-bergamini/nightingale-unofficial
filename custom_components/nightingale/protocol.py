@@ -87,11 +87,18 @@ NATURE_SOUND_TRACKS: dict[str, int] = {
 # ARG_SURFACE_TYPE ("surfaceType") -- rather than one flat 15-item list.
 # RoomType/RoomStyle below mirror that: two selects (see select.py)
 # combine into one write via encode_blanket, the same math as
-# Blanket.getBlanketIndex(). Room Type labels are inferred from resource
-# ID naming (adult_bedroom_type, childsroom_type, etc. -- no strings.xml
-# was available to confirm the exact rendered text); Surface Type labels
-# are exact, taken directly from generateBlanketDescription()'s literal
-# strings ("Absorptive", "Neutral", "Reflective").
+# Blanket.getBlanketIndex(). ROOM_TYPE_LABELS/ROOM_STYLE_LABELS and
+# BLANKET_NAMES are all confirmed exact text, extracted directly from
+# the APK's compiled resource table (androguard, res ids
+# adult_bedroom_type/childsroom_type/snoring_type/tinnitus_type/
+# hospital_type/absorptive_surface/reflective_surface and
+# generateBlanketDescription()'s literal strings) -- not inferred from
+# resource-id naming as originally documented. The picker labels and
+# the resulting blanket's full name are genuinely different vendor
+# strings for the same room type (e.g. the Kids picker button says
+# "Youth Bedroom", but the blanket it produces is named "Infant,
+# Toddler & Youth Room Blanket") -- the vendor is inconsistent about
+# this across its own screens, so both are kept rather than picking one.
 SLEEP_SOUND_TRACK_UUID = "a54d9906-4298-4656-9bd3-7095e87365d6"
 
 
@@ -117,12 +124,26 @@ ROOM_TYPE_OFFSETS: dict[RoomType, int] = {
     RoomType.HOSPITAL: 30,
 }
 
+# The room-type PICKER's own button labels (what you choose *from*).
 ROOM_TYPE_LABELS: dict[RoomType, str] = {
     RoomType.BEDROOM: "Adult Bedroom",
-    RoomType.KIDS: "Infant, Toddler & Youth Room",
-    RoomType.SNORING: "Snoring",
-    RoomType.TINNITUS: "Tinnitus",
+    RoomType.KIDS: "Youth Bedroom",
+    RoomType.SNORING: "Snoring Condition",
+    RoomType.TINNITUS: "Tinnitus Condition",
     RoomType.HOSPITAL: "Hospital Room",
+}
+
+# The resulting Blanket's own full name once one is selected/active
+# (Blanket.generateBlanketName()'s literal strings) -- different
+# wording than the picker labels above for Kids/Snoring/Tinnitus. Used
+# for BEDROOM_BLANKETS/Now Playing, matching what the app displays once
+# a blanket is active, not what its picker button said while choosing.
+BLANKET_NAMES: dict[RoomType, str] = {
+    RoomType.BEDROOM: "Adult Bedroom Blanket",
+    RoomType.KIDS: "Infant, Toddler & Youth Room Blanket",
+    RoomType.SNORING: "Snoring Blanket",
+    RoomType.TINNITUS: "Tinnitus Blanket",
+    RoomType.HOSPITAL: "Hospital Room Blanket",
 }
 
 ROOM_STYLE_LABELS: dict[RoomStyle, str] = {
@@ -134,7 +155,7 @@ ROOM_STYLE_LABELS: dict[RoomStyle, str] = {
 # Flat name->index reference, derived from the two dimensions above
 # rather than hand-maintained separately -- matches PROTOCOL.md's table.
 BEDROOM_BLANKETS: dict[str, int] = {
-    f"{ROOM_TYPE_LABELS[room_type]} Blanket ({ROOM_STYLE_LABELS[room_style]})": int(room_style)
+    f"{BLANKET_NAMES[room_type]} ({ROOM_STYLE_LABELS[room_style]})": int(room_style)
     + offset
     for room_type, offset in ROOM_TYPE_OFFSETS.items()
     for room_style in RoomStyle
@@ -217,13 +238,17 @@ class SoundMode(IntEnum):
     NATURE_SOUND = 0x01
 
 
-# Named RGB presets confirmed (or inferred) in PROTOCOL.md. "Red" is
-# inferred, not confirmed against a physical unit.
+# All 4 confirmed exact -- extracted directly from the APK's compiled
+# R.array.lightColors resource table (androguard): 0xFFFFFFFF,
+# 0xFFFF0000, 0xFF00FF00, 0xFF0000FF. This is also the app's *entire*
+# palette, not a subset -- the native UI itself only ever offers these
+# four colors, confirmed by the array's actual length (4), not a
+# limitation introduced by this integration.
 LIGHT_COLOR_PRESETS: dict[str, tuple[int, int, int]] = {
     "white": (0xFF, 0xFF, 0xFF),
     "green": (0x00, 0xFF, 0x00),
     "blue": (0x00, 0x00, 0xFF),
-    "red": (0xFF, 0x00, 0x00),  # inferred, not confirmed live
+    "red": (0xFF, 0x00, 0x00),
 }
 
 
