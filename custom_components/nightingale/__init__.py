@@ -19,6 +19,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
+    Platform.TIME,
 ]
 
 # Nothing about entity setup (each platform's async_setup_entry, which
